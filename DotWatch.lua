@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.12"
+local VERSION = "0.12.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -739,33 +739,77 @@ local frame = CreateFrame("Frame", "DotWatchFrame", UIParent)
 frame:SetSize(WIDTH, ROW_H)
 frame:SetMovable(true)
 frame:SetClampedToScreen(true)
-frame:RegisterForDrag("LeftButton")
-frame:SetScript("OnDragStart", function(self) if not db.locked then self:StartMoving() end end)
+-- 0.12.1: position without reading the window's geometry. Since it shows the
+-- game-drawn (secret) HP %, the game keeps its size and position secret too:
+-- GetPoint/GetCenter returned secret numbers, which were saved as nothing, and
+-- StartMoving stopped working. Now DotWatch keeps its own numbers:
+-- db.pos = { point, "BOTTOMLEFT", x, y } in the window's own scale, and drags by
+-- following the cursor itself.
+local GROW_POINT = { middle = "CENTER", down = "TOPLEFT", up = "BOTTOMLEFT" }
+local frameW, frameH = WIDTH, ROW_H -- the size we last gave the window (our own numbers)
+
+local function uiSize()
+  local w, h = plain(UIParent.GetWidth, UIParent), plain(UIParent.GetHeight, UIParent)
+  return (type(w) == "number" and w > 0) and w or 1920, (type(h) == "number" and h > 0) and h or 1080
+end
+local function frameScale() return (db and db.scale) or 1 end
+
+local function validPos(pos)
+  return type(pos) == "table" and pos[2] == "BOTTOMLEFT" and type(pos[3]) == "number" and type(pos[4]) == "number"
+    and (pos[1] == "CENTER" or pos[1] == "TOPLEFT" or pos[1] == "BOTTOMLEFT")
+end
+local function defaultPos()
+  local w, h = uiSize()
+  local s = frameScale()
+  return { "CENTER", "BOTTOMLEFT", (w / 2 + 300) / s, (h / 2) / s }
+end
+-- the same spot, expressed for another anchor point (uses our own size numbers)
+local function convertPos(pos, point)
+  local x, y = pos[3], pos[4]
+  local cx, cy = x, y
+  if pos[1] == "TOPLEFT" then cx, cy = x + frameW / 2, y - frameH / 2
+  elseif pos[1] == "BOTTOMLEFT" then cx, cy = x + frameW / 2, y + frameH / 2 end
+  if point == "TOPLEFT" then return { point, "BOTTOMLEFT", cx - frameW / 2, cy + frameH / 2 } end
+  if point == "BOTTOMLEFT" then return { point, "BOTTOMLEFT", cx - frameW / 2, cy - frameH / 2 } end
+  return { "CENTER", "BOTTOMLEFT", cx, cy }
+end
+local function clampPos(pos)
+  local w, h = uiSize()
+  local s = frameScale()
+  pos[3] = math.max(-frameW / 2, math.min(w / s, pos[3]))
+  pos[4] = math.max(-frameH / 2, math.min(h / s + frameH / 2, pos[4]))
+  return pos
+end
+local function applyPos()
+  if not validPos(db.pos) then db.pos = defaultPos() end
+  local want = GROW_POINT[db.grow or "middle"] or "CENTER"
+  if db.pos[1] ~= want then db.pos = convertPos(db.pos, want) end
+  frame:ClearAllPoints()
+  frame:SetPoint(db.pos[1], UIParent, "BOTTOMLEFT", db.pos[3], db.pos[4])
+end
 -- growth direction: which point of the list stays put when it gets longer
 -- ("middle" = center, the old behavior; "down" = top edge; "up" = bottom edge)
-function LOOK.anchor()
-  local grow = db.grow or "middle"
-  local l, t, b = frame:GetLeft(), frame:GetTop(), frame:GetBottom()
-  if not (l and t and b) then return end
-  frame:ClearAllPoints()
-  if grow == "down" then
-    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
-    db.pos = { "TOPLEFT", "BOTTOMLEFT", l, t }
-  elseif grow == "up" then
-    frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l, b)
-    db.pos = { "BOTTOMLEFT", "BOTTOMLEFT", l, b }
-  else
-    local cx, cy = frame:GetCenter()
-    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
-    db.pos = { "CENTER", "BOTTOMLEFT", cx, cy }
-  end
-end
+function LOOK.anchor() applyPos() end
 
-frame:SetScript("OnDragStop", function(self)
-  self:StopMovingOrSizing()
-  local p, _, rp, x, y = self:GetPoint()
-  db.pos = { p, rp, x, y }
-  LOOK.anchor()
+-- dragging: follow the cursor ourselves (StartMoving fails on a window with secret content)
+local drag
+frame:SetScript("OnMouseDown", function(self, button)
+  if button ~= "LeftButton" or db.locked then return end
+  if not validPos(db.pos) then applyPos() end
+  local cx, cy = GetCursorPosition()
+  local eff = plain(self.GetEffectiveScale, self) or ((plain(UIParent.GetEffectiveScale, UIParent) or 1) * frameScale())
+  drag = { cx = cx, cy = cy, x = db.pos[3], y = db.pos[4], eff = eff }
+end)
+frame:SetScript("OnMouseUp", function()
+  if drag then drag = nil clampPos(db.pos) applyPos() end
+end)
+frame:HookScript("OnUpdate", function()
+  if not drag then return end
+  local cx, cy = GetCursorPosition()
+  db.pos[3] = drag.x + (cx - drag.cx) / drag.eff
+  db.pos[4] = drag.y + (cy - drag.cy) / drag.eff
+  frame:ClearAllPoints()
+  frame:SetPoint(db.pos[1], UIParent, "BOTTOMLEFT", db.pos[3], db.pos[4])
 end)
 
 local anchorBg = frame:CreateTexture(nil, "BACKGROUND")
@@ -1603,7 +1647,9 @@ local function layout()
   anchorBg:SetShown(not db.locked)
   anchorText:SetShown(not db.locked and empty)
   frame:EnableMouse(not db.locked)
-  frame:SetSize(math.max(w, 160), math.max(h, ROW_H))
+  local newW, newH = math.max(w, 160), math.max(h, ROW_H)
+  frame:SetSize(newW, newH)
+  frameW, frameH = newW, newH
   local ooc = not LOOK.inCombat and db.locked
   frame:SetShown((not empty or not db.locked) and not (ooc and db.ooc == "hide"))
   frame:SetAlpha(ooc and db.ooc == "fade" and 0.4 or 1)
@@ -1764,13 +1810,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
     for npc, t in pairs(db.immune) do
       for k in pairs(t) do if type(k) == "number" then t[k] = nil end end
     end
-    frame:ClearAllPoints()
-    if db.pos then
-      frame:SetPoint(db.pos[1], UIParent, db.pos[2], db.pos[3], db.pos[4])
-    else
-      frame:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
-    end
     initSettings()
+    applyPos() -- broken (secret) positions from 0.10-0.12 fall back to the default spot
     dirty = true
     dbg("LOADED " .. VERSION)
     say(VERSION .. " loaded. /dw for options, /dw help for commands.")
@@ -1992,8 +2033,16 @@ end
 
 local updateMinimapButton -- set below
 
+local lastScale
 local function applySettings()
-  frame:SetScale(db.scale or 1)
+  local s = db.scale or 1
+  -- keep the window where it is on screen when its size preset changes
+  if lastScale and lastScale ~= s and validPos(db.pos) then
+    db.pos[3], db.pos[4] = db.pos[3] * lastScale / s, db.pos[4] * lastScale / s
+  end
+  lastScale = s
+  frame:SetScale(s)
+  applyPos()
   if updateMinimapButton then updateMinimapButton() end
   dirty = true
 end
@@ -2613,8 +2662,7 @@ local function buildOptions()
   bClose:SetPoint("BOTTOMRIGHT", -22, 18)
   local bReset = makeButton(f, "Reset position", 120, function()
     db.pos = nil
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
+    applyPos()
   end)
   bReset:SetPoint("RIGHT", bClose, "LEFT", -6, 0)
   local bTest = makeButton(f, "Test", 100, function() testBars() end)
@@ -2809,8 +2857,7 @@ SlashCmdList.DOTWATCH = function(msg)
     say(db.locked and "Locked. The window only shows up when timers run." or "Unlocked. Drag the purple box to move it.")
   elseif cmd == "reset" then
     db.pos = nil
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
+    applyPos()
     say("Position reset.")
   elseif cmd == "chat" then
     db.chat = not db.chat

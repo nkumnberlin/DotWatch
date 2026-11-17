@@ -1,12 +1,12 @@
-# Tags every new version automatically, so CurseForge packages it.
-# Bump "## Version:" in DotWatch.toc and push to main -> tag v<version> is
-# created once. CurseForge's "tagged commits" packaging then builds the zip.
+# Releases only what Nico tested and approved.
+# Day-to-day work goes to main (no release). After his OK, main is pushed to
+# the "release" branch -> this creates tag v<version> from DotWatch.toc (once),
+# and CurseForge's "tagged commits" packaging builds the zip.
 name: Tag new version
 
 on:
   push:
-    branches: [main]
-    paths: [DotWatch.toc]
+    branches: [release]
   workflow_dispatch:
 
 permissions:

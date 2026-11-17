@@ -65,4 +65,4 @@ MIT, see [LICENSE](LICENSE).
 
 ## Releases
 
-A new version only needs the `## Version:` line in `DotWatch.toc` bumped and pushed to `main`. The GitHub Action in `.github/workflows/tag-release.yml` then creates the tag `v<version>`, and CurseForge packages and publishes it (tag with `-beta` / `-alpha` = beta / alpha file).
+Work happens on `main`; nothing is released from there. A version is released only after it was tested in game: `main` is pushed to the `release` branch, the GitHub Action in `.github/workflows/tag-release.yml` creates the tag `v<version>` from `DotWatch.toc`, and CurseForge packages and publishes it.
