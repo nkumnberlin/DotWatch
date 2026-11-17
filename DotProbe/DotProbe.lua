@@ -1,4 +1,4 @@
--- DotProbe 0.3: diagnostic addon for WoW Forever.
+-- DotProbe 0.4: diagnostic addon for WoW Forever.
 -- No gameplay function. It only logs which data addons can read in combat
 -- (or whether it is "secret"), so the real DoT tracker can be built on facts.
 --
@@ -438,7 +438,7 @@ f:SetScript("OnEvent", function(self, event, ...)
       db = DotProbeDB
       db.log = db.log or {}
       if db.echo == nil then db.echo = false end
-      say("0.2 loaded. /dp help for commands. Log: " .. #db.log .. " lines.")
+      say("0.4 loaded. /dp help for commands. Log: " .. #db.log .. " lines.")
       if db.npOrig then
         say("|cffffaa00Nameplate CVars are still changed from a hide test. /dp show restores them.|r")
       end
@@ -529,6 +529,7 @@ local HELP = {
   "/dp land           - landing chat lines on/off; /dp landstats = summary",
   "/dp click [spell]  - click test: rows per enemy nameplate, left = cast there, right = target",
   "/dp click status   - why rows are missing (states, nameplates, conditional)",
+  "/dp dots [off]     - dungeon test: your debuffs on the target, drawn by the game",
   "/dp echo | aura | status | clear | help",
 }
 
@@ -674,6 +675,185 @@ local function ckCommand(rest)
   say("Click test on. Left click a row = " .. spell .. " on THAT mob, right click = target it. /dp click off hides it.")
 end
 
+
+---------------------------------------------------------------------------
+-- 0.4: aura test for dungeons. In instances Forever hides names and GUIDs.
+-- Can the game still DRAW our debuffs (icon + timer) like it draws HP %?
+-- /dp aura: panel for target + up to 4 nameplates, and an API report in the log.
+---------------------------------------------------------------------------
+local au = { built = false, rows = {}, lastReport = {} }
+local AU_UNITS = { "target" }
+local AU_FILTER = "HARMFUL|PLAYER"
+
+local function auType(v)
+  if issecret(v) then return "SECRET" end
+  if v == nil then return "nil" end
+  if type(v) == "table" then return "table" end
+  return type(v) .. ":" .. tostring(v)
+end
+
+-- every way we know to get the player's debuffs on a unit; returns list, method, notes
+local function auGet(unit)
+  local notes = {}
+  if C_UnitAuras and C_UnitAuras.GetUnitAuras then
+    local ok, res = pcall(C_UnitAuras.GetUnitAuras, unit, AU_FILTER)
+    if ok and type(res) == "table" and not issecret(res) then
+      local okN, n = pcall(function() return #res end)
+      notes[#notes + 1] = "GetUnitAuras ok n=" .. tostring(okN and n or "ERR")
+      if okN then return res, "GetUnitAuras", notes end
+    else
+      notes[#notes + 1] = "GetUnitAuras " .. (ok and auType(res) or ("ERR " .. tostring(res)))
+    end
+  else
+    notes[#notes + 1] = "GetUnitAuras missing"
+  end
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    local list, err = {}, nil
+    for i = 1, 16 do
+      local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, AU_FILTER)
+      if not ok then err = a break end
+      if a == nil then break end
+      list[#list + 1] = a
+    end
+    notes[#notes + 1] = "GetAuraDataByIndex " .. (err and ("ERR " .. tostring(err)) or ("ok n=" .. #list))
+    if not err then return list, "GetAuraDataByIndex", notes end
+  end
+  if AuraUtil and AuraUtil.ForEachAura then
+    local list = {}
+    local ok, err = pcall(AuraUtil.ForEachAura, unit, AU_FILTER, 16, function(a) list[#list + 1] = a end, true)
+    notes[#notes + 1] = "ForEachAura " .. (ok and ("ok n=" .. #list) or ("ERR " .. tostring(err)))
+    if ok then return list, "ForEachAura", notes end
+  end
+  return nil, "none", notes
+end
+
+local function auReport(unit, list, method, notes)
+  local t = GetTime()
+  if au.lastReport[unit] and t - au.lastReport[unit] < 6 then return end
+  au.lastReport[unit] = t
+  local inInst, instType = IsInInstance()
+  log("AURA", string.format("%s instance=%s/%s exists=%s name=%s guid=%s | %s | via %s",
+    unit, tostring(inInst), tostring(instType), tostring(UnitExists(unit)), auType(UnitName(unit)),
+    auType(UnitGUID(unit)), table.concat(notes, "; "), method))
+  if list and list[1] then
+    local a = list[1]
+    local okF, fields = pcall(function()
+      return string.format("first aura: table=%s id=%s spellId=%s name=%s icon=%s dur=%s exp=%s src=%s",
+        auType(a), auType(a.auraInstanceID), auType(a.spellId), auType(a.name), auType(a.icon),
+        auType(a.duration), auType(a.expirationTime), auType(a.sourceUnit))
+    end)
+    log("AURA", unit .. " " .. (okF and fields or ("fields ERR " .. tostring(fields))))
+    if C_UnitAuras and C_UnitAuras.GetAuraDuration then
+      local ok, d = pcall(C_UnitAuras.GetAuraDuration, unit, a.auraInstanceID)
+      log("AURA", unit .. " GetAuraDuration " .. (ok and auType(d) or ("ERR " .. tostring(d))))
+    else
+      log("AURA", "GetAuraDuration missing")
+    end
+  end
+end
+
+local function auSetTimer(cd, unit, a)
+  -- 1) duration object, 2) plain numbers (outside dungeons), 3) secret numbers straight into the widget
+  if C_UnitAuras and C_UnitAuras.GetAuraDuration and cd.SetCooldownFromDurationObject then
+    local ok, d = pcall(C_UnitAuras.GetAuraDuration, unit, a.auraInstanceID)
+    if ok and d and pcall(cd.SetCooldownFromDurationObject, cd, d) then return "durobj" end
+  end
+  local exp, dur = a.expirationTime, a.duration
+  if not issecret(exp) and not issecret(dur) and type(exp) == "number" and type(dur) == "number" then
+    cd:SetCooldown(exp - dur, dur)
+    return "numbers"
+  end
+  if cd.SetCooldownFromExpirationTime and pcall(cd.SetCooldownFromExpirationTime, cd, exp, dur) then return "exptime" end
+  return "none"
+end
+
+local function auBuild()
+  local f = CreateFrame("Frame", "DotProbeAuraTest", UIParent)
+  f:SetSize(260, 40 + #AU_UNITS * 40)
+  f:SetPoint("CENTER", UIParent, "CENTER", -380, -60)
+  f:SetMovable(true)
+  f:EnableMouse(true)
+  f:RegisterForDrag("LeftButton")
+  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  local bg = f:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(0, 0, 0, 0.6)
+  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  title:SetPoint("TOPLEFT", 6, -6)
+  title:SetText("DotProbe aura test (drag me)")
+  for r, unit in ipairs(AU_UNITS) do
+    local row = { unit = unit, icons = {} }
+    row.name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name:SetPoint("TOPLEFT", 6, -22 - (r - 1) * 40)
+    row.name:SetWidth(240)
+    row.name:SetJustifyH("LEFT")
+    for i = 1, 6 do
+      local ic = CreateFrame("Frame", nil, f)
+      ic:SetSize(24, 24)
+      ic:SetPoint("TOPLEFT", 6 + (i - 1) * 27, -34 - (r - 1) * 40)
+      ic.tex = ic:CreateTexture(nil, "ARTWORK")
+      ic.tex:SetAllPoints()
+      ic.cd = CreateFrame("Cooldown", nil, ic, "CooldownFrameTemplate")
+      ic.cd:SetAllPoints()
+      ic.cd:SetReverse(true)
+      if ic.cd.SetHideCountdownNumbers then ic.cd:SetHideCountdownNumbers(false) end
+      ic:Hide()
+      row.icons[i] = ic
+    end
+    au.rows[r] = row
+  end
+  local acc = 0
+  f:SetScript("OnUpdate", function(self, el)
+    acc = acc + el
+    if acc < 0.25 then return end
+    acc = 0
+    for _, row in ipairs(au.rows) do
+      local unit = row.unit
+      if UnitExists(unit) then
+        pcall(row.name.SetText, row.name, UnitName(unit)) -- secret names may be drawn
+        local list, method, notes = auGet(unit)
+        auReport(unit, list, method, notes)
+        local how = {}
+        for i, ic in ipairs(row.icons) do
+          local a = list and list[i]
+          if a then
+            local okT = pcall(ic.tex.SetTexture, ic.tex, a.icon)
+            local okC, m = pcall(auSetTimer, ic.cd, unit, a)
+            how[#how + 1] = (okT and "icon" or "noicon") .. "/" .. (okC and m or "ERR")
+            ic:Show()
+          else
+            ic:Hide()
+          end
+        end
+        local key = table.concat(how, " ")
+        if key ~= row.lastHow then
+          row.lastHow = key
+          log("AURA", unit .. " draw: " .. (key ~= "" and key or "no auras"))
+        end
+      else
+        row.name:SetText(unit .. ": -")
+        for _, ic in ipairs(row.icons) do ic:Hide() end
+      end
+    end
+  end)
+  au.frame = f
+  au.built = true
+end
+
+local function auCommand(rest)
+  if rest == "off" then
+    if au.frame then au.frame:Hide() end
+    say("Aura test hidden.")
+    return
+  end
+  if not au.built then auBuild() end
+  au.frame:Show()
+  au.lastReport = {}
+  log("AURA", "test on")
+  say("Aura test on: shows YOUR debuffs on your target, drawn by the game. /dp dots off hides it.")
+end
+
 SLASH_DOTPROBE1 = "/dp"
 SLASH_DOTPROBE2 = "/dotprobe"
 SlashCmdList.DOTPROBE = function(msg)
@@ -736,6 +916,8 @@ SlashCmdList.DOTPROBE = function(msg)
     wipe(db.log)
     state.full = false
     say("Log cleared.")
+  elseif cmd == "dots" then
+    auCommand(rest)
   elseif cmd == "click" then
     ckCommand(rest)
   elseif cmd == "status" then
