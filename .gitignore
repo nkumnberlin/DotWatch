@@ -1,0 +1,11 @@
+# editor and OS files
+.DS_Store
+Thumbs.db
+*.bak
+*.swp
+.vscode/
+.idea/
+# never commit game logs / SavedVariables
+*.lua.bak
+SavedVariables/
+logs/
