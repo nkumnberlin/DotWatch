@@ -18,6 +18,9 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.8: refresh warning, tick marks, "DoT lost?", control timers, target bar like an
+-- action bar + keybindings, Look page (font, texture, colors), growth direction,
+-- out-of-combat fading, statistics and fight summary.
 -- New in 0.7: target bar (click a DoT to cast/refresh it on your target), options
 -- with a navigation list on the left.
 -- New in 0.6: five display styles with a live preview in the options (Display tab).
@@ -29,7 +32,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.7.3"
+local VERSION = "0.8"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -82,14 +85,15 @@ end
 -- group = only one per warlock per target (a new one replaces the old one)
 -- slot  = fixed row per enemy (gray placeholder while not active); nil = only shown when active
 local SPELLS = {
-  { name = "Corruption",            dur = 18,  color = { 0.62, 0.30, 0.95 }, slot = "corruption" },
-  { name = "Immolate",              dur = 15,  color = { 1.00, 0.50, 0.10 }, slot = "immolate" },
-  { name = "Siphon Life",           dur = 30,  color = { 0.30, 0.85, 0.40 }, slot = "siphon" },
-  { name = "Unstable Affliction",   dur = 18,  color = { 0.45, 0.70, 1.00 }, slot = "ua" },
-  { name = "Bane of Agony",         dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "bane", slot = "bane" },
+  -- tick = seconds between damage ticks, school = 32 shadow / 4 fire (for "DoT lost?")
+  { name = "Corruption",            dur = 18,  color = { 0.62, 0.30, 0.95 }, slot = "corruption", tick = 3, school = 32 },
+  { name = "Immolate",              dur = 15,  color = { 1.00, 0.50, 0.10 }, slot = "immolate", tick = 3, school = 4 },
+  { name = "Siphon Life",           dur = 30,  color = { 0.30, 0.85, 0.40 }, slot = "siphon", tick = 3, school = 32 },
+  { name = "Unstable Affliction",   dur = 18,  color = { 0.45, 0.70, 1.00 }, slot = "ua", tick = 3, school = 32 },
+  { name = "Bane of Agony",         dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "bane", slot = "bane", tick = 2, school = 32 },
   { name = "Bane of Doom",          dur = 60,  color = { 0.70, 0.10, 0.10 }, group = "bane", slot = "bane" },
   { name = "Bane of Havoc",         dur = 300, color = { 0.80, 0.30, 0.30 }, group = "bane", slot = "bane" },
-  { name = "Curse of Agony",        dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "curse", slot = "bane" },
+  { name = "Curse of Agony",        dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "curse", slot = "bane", tick = 2, school = 32 },
   { name = "Curse of Doom",         dur = 60,  color = { 0.70, 0.10, 0.10 }, group = "curse", slot = "bane" },
   { name = "Curse of Weakness",     dur = 120, color = { 0.60, 0.60, 0.60 }, group = "curse" },
   { name = "Curse of Recklessness", dur = 120, color = { 0.80, 0.40, 0.40 }, group = "curse" },
@@ -97,6 +101,11 @@ local SPELLS = {
   { name = "Curse of the Elements", dur = 300, color = { 0.40, 0.60, 0.90 }, group = "curse" },
   { name = "Curse of Shadow",       dur = 300, color = { 0.50, 0.30, 0.70 }, group = "curse" },
   { name = "Curse of Exhaustion",   dur = 12,  color = { 0.40, 0.70, 0.70 }, group = "curse" },
+  -- crowd control: shown while active, like curses (option "Control timers")
+  { name = "Fear",                  dur = 20,  color = { 0.75, 0.35, 0.95 }, cc = true },
+  { name = "Banish",                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true },
+  { name = "Enslave Demon",         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true },
+  { name = "Death Coil",            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
 }
 local DEF_BY_NAME = {}
 for _, s in ipairs(SPELLS) do DEF_BY_NAME[s.name] = s end
@@ -109,9 +118,9 @@ local bookMethod = "not scanned"
 
 local function parseDuration(desc)
   if type(desc) ~= "string" then return nil end
-  local n = desc:match("over (%d+) sec") or desc:match("for (%d+) sec")
+  local n = desc:match("over (%d+) sec") or desc:match("up to (%d+) sec") or desc:match("for (%d+) sec")
   if n then return tonumber(n) end
-  n = desc:match("over (%d+) min") or desc:match("for (%d+) min")
+  n = desc:match("over (%d+) min") or desc:match("up to (%d+) min") or desc:match("for (%d+) min")
   if n then return tonumber(n) * 60 end
   return nil
 end
@@ -135,6 +144,7 @@ local function spellInfo(id)
   if not name then return nil end -- don't cache, try again later
   local def = DEF_BY_NAME[name]
   if not def then spellCache[id] = false return nil end
+  if def.cc and db and db.trackCC == false then return nil end
   local descDur = C_Spell and C_Spell.GetSpellDescription
     and parseDuration(str(plain(C_Spell.GetSpellDescription, id)))
   local info = { id = id, name = name, def = def, group = def.group, slot = def.slot, color = def.color,
@@ -261,6 +271,22 @@ local SAME_FRAME = 0.02
 
 local FAIL = { MISS = "Resisted", RESIST = "Resisted", IMMUNE = "Immune", EVADE = "Evaded" }
 
+-- counters for the optional fight summary
+local fight = { start = 0, casts = 0, resisted = 0, immune = 0, refreshes = 0, lost = 0 }
+
+-- statistics per enemy type (NPC ID) and spell: c = casts, r = resisted, i = immune
+local function stat(guid, mobName, spellName, field)
+  if db.recordStats == false then return end
+  local npc = npcID(guid)
+  if not npc then return end
+  local e = db.stats[npc] or { name = mobName, s = {} }
+  db.stats[npc] = e
+  if mobName then e.name = mobName end
+  local sp = e.s[spellName] or { c = 0, r = 0, i = 0 }
+  e.s[spellName] = sp
+  sp[field] = sp[field] + 1
+end
+
 local function now() return GetTime() end
 
 local function getMob(guid, name)
@@ -324,6 +350,13 @@ local function failDot(m, d, action)
   end
   local label = FAIL[action] or action
   addFlash(m, d.info.name .. ": " .. label, 1, 0.3, 0.3)
+  if action == "IMMUNE" then
+    fight.immune = fight.immune + 1
+    stat(m.guid, m.name, d.info.name, "i")
+  else
+    fight.resisted = fight.resisted + 1
+    stat(m.guid, m.name, d.info.name, "r")
+  end
   dbg("FAIL " .. d.info.name .. " on " .. m.name .. " [" .. short(m.guid) .. "]: " .. action ..
     (d.prev and " (old timer kept)" or ""))
   if db.chat then say(string.format("|cffff5555%s %s|r on %s", d.info.name, label:lower(), m.name)) end
@@ -372,6 +405,9 @@ local function startDot(info, guid, name, t, how)
     end
   end
   m.dots[info.id] = d
+  fight.casts = fight.casts + 1
+  if prev then fight.refreshes = fight.refreshes + 1 end
+  stat(m.guid, m.name, info.name, "c")
   dbg(string.format("START %s on %s [%s] %ds%s%s", info.name, m.name, short(m.guid), dur,
     prev and " (refresh)" or "", how and (" " .. how) or ""))
   C_Timer.After(0.1, function() evaluate(m, d) end)
@@ -423,9 +459,20 @@ local function onSucceeded(castGUID, spellID)
   end)
 end
 
-local function onUnitCombat(unit, action)
+local function onUnitCombat(unit, action, _, _, school)
   action = str(action)
-  if not action or not FAIL[action] then return end
+  if not action then return end
+  if action == "WOUND" then
+    local g = guidOf(unit)
+    local m = g and mobs[g]
+    school = num(school)
+    if m and school then
+      m.lastTick = m.lastTick or {}
+      m.lastTick[school] = now()
+    end
+    return
+  end
+  if not FAIL[action] then return end
   local guid = guidOf(unit)
   if not guid then return end
   local t = now()
@@ -460,6 +507,10 @@ local function onUnitAura(unit, info)
     local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HARMFUL|PLAYER")
     if not ok or issecret(a) or not a then break end
     local id, dur, exp = num(a.spellId), num(a.duration), num(a.expirationTime)
+    if id and not spellInfo(id) and not db.untracked[id] then
+      db.untracked[id] = { name = str(a.name) or "?", dur = dur }
+      dbg("UNTRACKED own debuff " .. tostring(str(a.name)) .. " (" .. id .. ") " .. tostring(dur) .. "s")
+    end
     if id and dur and dur > 0 and spellInfo(id) then
       if db.learned[id] ~= dur then
         db.learned[id] = dur
@@ -542,6 +593,26 @@ local function scan()
   syncOutOfCombat()
   local t = now()
   for g, m in pairs(mobs) do
+    -- "DoT lost?": its school's ticks stopped although the enemy is in view
+    if m.unit then m.tokenSince = m.tokenSince or t else m.tokenSince = nil end
+    if db.lostCheck ~= false then
+      for _, d in pairs(m.dots) do
+        local iv, sch = d.info.def.tick, d.info.def.school
+        if iv and sch then
+          local last = m.lastTick and m.lastTick[sch] or 0
+          local ref = math.max(d.start, m.tokenSince or math.huge, last)
+          if not d.lost and m.tokenSince and t - ref > iv * 1.5 + 1 and t - d.start > iv + 1 then
+            d.lost, d.lostAt = true, t
+            fight.lost = fight.lost + 1
+            dirty = true
+            dbg("LOST? " .. d.info.name .. " on " .. m.name .. " [" .. short(g) .. "]: no ticks for " .. string.format("%.1f", t - ref) .. "s")
+          elseif d.lost and last > d.lostAt then
+            d.lost = false
+            dirty = true
+          end
+        end
+      end
+    end
     for id, d in pairs(m.dots) do
       if d.expires <= t then
         m.dots[id] = nil
@@ -560,6 +631,40 @@ end
 -- Display (plain for now; the visual design comes later)
 ---------------------------------------------------------------------------
 local ROW_H, WIDTH, GAP = 16, 220, 6
+
+-- look settings (font size, bar texture, colors per DoT, combat state)
+local LOOK = {
+  FONTS = {
+    small  = { hdr = "GameFontNormalSmall", txt = "GameFontHighlightSmall", row = 16, head = 15, label = "Small" },
+    normal = { hdr = "GameFontNormal", txt = "GameFontHighlight", row = 19, head = 17, label = "Normal" },
+    large  = { hdr = "GameFontNormalLarge", txt = "GameFontHighlightLarge", row = 23, head = 21, label = "Large" },
+  },
+  FONT_ORDER = { "small", "normal", "large" },
+  TEXTURES = {
+    { key = "classic", file = "Interface\\TargetingFrame\\UI-StatusBar", label = "Classic" },
+    { key = "smooth", file = "Interface\\RaidFrame\\Raid-Bar-Hp-Fill", label = "Smooth" },
+    { key = "skill", file = "Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar", label = "Skill bar" },
+    { key = "flat", file = "Interface\\Buttons\\WHITE8X8", label = "Flat" },
+  },
+  inCombat = false,
+}
+function LOOK.font() return LOOK.FONTS[db and db.fontSize or "small"] or LOOK.FONTS.small end
+function LOOK.tex()
+  for _, t in ipairs(LOOK.TEXTURES) do
+    if t.key == (db and db.texture) then return t.file end
+  end
+  return LOOK.TEXTURES[1].file
+end
+function LOOK.color(info)
+  local c = db and db.colors and db.colors[info.name]
+  return c or info.color
+end
+-- 0.55..1 pulse while a DoT is about to run out (refresh warning)
+function LOOK.pulse(d, left, t)
+  if d.lost or not db or db.warn == false then return 1 end
+  if left > 0 and left <= (db.warnTime or 3) then return 0.55 + 0.45 * math.abs(math.sin(t * 6)) end
+  return 1
+end
 local LETTERS = "ABCDEFGHIJ"
 
 local frame = CreateFrame("Frame", "DotWatchFrame", UIParent)
@@ -568,10 +673,31 @@ frame:SetMovable(true)
 frame:SetClampedToScreen(true)
 frame:RegisterForDrag("LeftButton")
 frame:SetScript("OnDragStart", function(self) if not db.locked then self:StartMoving() end end)
+-- growth direction: which point of the list stays put when it gets longer
+-- ("middle" = center, the old behavior; "down" = top edge; "up" = bottom edge)
+function LOOK.anchor()
+  local grow = db.grow or "middle"
+  local l, t, b = frame:GetLeft(), frame:GetTop(), frame:GetBottom()
+  if not (l and t and b) then return end
+  frame:ClearAllPoints()
+  if grow == "down" then
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+    db.pos = { "TOPLEFT", "BOTTOMLEFT", l, t }
+  elseif grow == "up" then
+    frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l, b)
+    db.pos = { "BOTTOMLEFT", "BOTTOMLEFT", l, b }
+  else
+    local cx, cy = frame:GetCenter()
+    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
+    db.pos = { "CENTER", "BOTTOMLEFT", cx, cy }
+  end
+end
+
 frame:SetScript("OnDragStop", function(self)
   self:StopMovingOrSizing()
   local p, _, rp, x, y = self:GetPoint()
   db.pos = { p, rp, x, y }
+  LOOK.anchor()
 end)
 
 local anchorBg = frame:CreateTexture(nil, "BACKGROUND")
@@ -887,7 +1013,7 @@ local function layoutPlates(sameNameCount, LETTERS)
               ic:ClearAllPoints()
               ic:SetPoint("LEFT", o, "LEFT", x, 0)
               ic.tex:SetTexture(d.info.icon)
-              local c = d.info.color
+              local c = LOOK.color(d.info)
               ic.border:SetColorTexture(c[1], c[2], c[3], 1)
               ic:SetAlpha(d.confirmed and 1 or 0.7)
               ic:Show()
@@ -928,7 +1054,8 @@ local n, cv, curList -- per-layout counters, canvas, enemy list
 local function placeHeader(m, tg, x, y, big)
   n.h = n.h + 1
   local h = getHeader(cv, n.h)
-  local font = big and "GameFontNormal" or "GameFontNormalSmall"
+  local f = LOOK.font()
+  local font = big and "GameFontNormalLarge" or f.hdr
   h:SetFontObject(font)
   h.hp:SetFontObject(font)
   local label = m.name
@@ -948,7 +1075,7 @@ local function placeHeader(m, tg, x, y, big)
     local p = m.fakeHP / 100
     if p >= 0.5 then h.hp:SetTextColor((1 - p) * 2, 1, 0.15) else h.hp:SetTextColor(1, p * 2, 0.15) end
   end
-  return big and 18 or 15
+  return big and 21 or f.head
 end
 
 local function placeFlashes(m, x, y)
@@ -956,12 +1083,13 @@ local function placeFlashes(m, x, y)
   for _, fx in ipairs(m.flash) do
     n.f = n.f + 1
     local fl = getFlash(cv, n.f)
+    fl:SetFontObject(LOOK.font().txt)
     fl:SetText(fx.text)
     fl:SetTextColor(fx.r, fx.g, fx.b)
     fl:ClearAllPoints()
     fl:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", x, -(y + dy))
     fl:Show()
-    dy = dy + 13
+    dy = dy + LOOK.font().row - 3
   end
   return dy
 end
@@ -972,7 +1100,7 @@ local function setCell(c, r, size)
   c.time:SetFontObject(size >= 40 and "NumberFontNormalLarge" or "NumberFontNormal")
   if r.dot then
     c.dot = r.dot
-    c.icon:SetDesaturated(false)
+    c.icon:SetDesaturated(r.dot.lost and true or false)
     c.icon:SetAlpha(1)
     c.cd:Show()
     pcall(c.cd.SetCooldown, c.cd, r.dot.start, r.dot.expires - r.dot.start)
@@ -1001,6 +1129,10 @@ render.bars = function(list, tg, W)
       n.b = n.b + 1
       local b = getBar(cv, n.b)
       b:SetSize(W - ROW_H - 2, ROW_H - 2)
+      b.icon:SetSize(ROW_H - 2, ROW_H - 2)
+      b:SetStatusBarTexture(LOOK.tex())
+      b.label:SetFontObject(LOOK.font().txt)
+      b.time:SetFontObject(LOOK.font().txt)
       b.icon:SetTexture(rowIcon(r))
       if r.dot then
         b.dot = r.dot
@@ -1009,8 +1141,13 @@ render.bars = function(list, tg, W)
         b.bg:SetColorTexture(0, 0, 0, 0.5)
         b.label:SetText(r.dot.info.name)
         b.label:SetTextColor(1, 1, 1)
-        local c = r.dot.info.color
-        b:SetStatusBarColor(c[1], c[2], c[3])
+        local c = LOOK.color(r.dot.info)
+        if r.dot.lost then
+          b:SetStatusBarColor(0.4, 0.4, 0.4)
+          b.icon:SetDesaturated(true)
+        else
+          b:SetStatusBarColor(c[1], c[2], c[3])
+        end
       else
         b.dot = nil
         b.icon:SetDesaturated(true)
@@ -1048,6 +1185,11 @@ render.slim = function(list, tg, W)
       n.s = n.s + 1
       local b = getSlim(cv, n.s)
       b:SetWidth(W)
+      b:SetHeight(ROW_H - 2)
+      b.icon:SetSize(ROW_H - 2, ROW_H - 2)
+      b.bar:SetStatusBarTexture(LOOK.tex())
+      b.time:SetFontObject(LOOK.font().txt)
+      b.time:SetWidth(ROW_H * 2)
       b.icon:SetTexture(rowIcon(r))
       if r.dot then
         b.dot = r.dot
@@ -1055,8 +1197,13 @@ render.slim = function(list, tg, W)
         b.icon:SetAlpha(1)
         b.border:SetColorTexture(0, 0, 0, 0.9)
         b.bar:Show()
-        local c = r.dot.info.color
-        b.bar:SetStatusBarColor(c[1], c[2], c[3])
+        local c = LOOK.color(r.dot.info)
+        if r.dot.lost then
+          b.bar:SetStatusBarColor(0.4, 0.4, 0.4)
+          b.icon:SetDesaturated(true)
+        else
+          b.bar:SetStatusBarColor(c[1], c[2], c[3])
+        end
       else
         b.dot = nil
         b.icon:SetDesaturated(true)
@@ -1068,9 +1215,9 @@ render.slim = function(list, tg, W)
       b:ClearAllPoints()
       b:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", 0, -y)
       b:Show()
-      y = y + 16
+      y = y + ROW_H
     end
-    y = y + placeFlashes(m, 18, y)
+    y = y + placeFlashes(m, ROW_H + 2, y)
   end
   return y
 end
@@ -1141,7 +1288,7 @@ render.table = function(list, tg, W)
       local r = bySlot[col.slot]
       if r and r.dot then
         c.dot = r.dot
-        local cc = r.dot.info.color
+        local cc = LOOK.color(r.dot.info)
         c.line:SetColorTexture(cc[1], cc[2], cc[3], 1)
       else
         c.dot = nil
@@ -1234,12 +1381,52 @@ local function drawCanvas(canvas, list, tg, style)
     for _, w in ipairs(pool) do w:Hide() end
   end
   style = STYLE_NAMES[style] and style or "bars"
-  local W = STYLE_WIDTH[style]
+  ROW_H = LOOK.font().row
+  local W = STYLE_WIDTH[style] + (ROW_H - 16) * 4
   if #list == 0 then return 0, W end
   cv, curList = canvas, list
   n = { h = 0, b = 0, s = 0, c = 0, m = 0, t = 0, f = 0, x = 0, l = 0 }
   local h, w = render[style](list, tg, W)
   return h, w or W
+end
+
+-- tick marks on a bar: one thin line per damage tick still to come
+local function placeTicks(b, bar, d, t, total)
+  b.ticks = b.ticks or {}
+  local iv = d.info.def.tick
+  local count = 0
+  if iv and db.ticks ~= false and not d.lost and total > 0 then
+    local w = bar:GetWidth() or 0
+    for k = 1, 30 do
+      local tickAt = d.start + k * iv
+      if tickAt >= d.expires - 0.05 then break end
+      if tickAt > t then
+        count = count + 1
+        local mark = b.ticks[count]
+        if not mark then
+          mark = bar:CreateTexture(nil, "OVERLAY")
+          mark:SetColorTexture(0, 0, 0, 0.7)
+          mark:SetWidth(1)
+          b.ticks[count] = mark
+        end
+        mark:ClearAllPoints()
+        mark:SetPoint("TOP", bar, "TOPLEFT", (d.expires - tickAt) / total * w, 0)
+        mark:SetPoint("BOTTOM", bar, "BOTTOMLEFT", (d.expires - tickAt) / total * w, 0)
+        mark:Show()
+      end
+    end
+  end
+  for k = count + 1, #b.ticks do b.ticks[k]:Hide() end
+end
+
+local function timeText(fs, d, left)
+  if d.lost then
+    fs:SetText("lost?")
+    fs:SetTextColor(1, 0.6, 0.2)
+  else
+    fs:SetText(fmtTime(left))
+    timeColor(fs, left)
+  end
 end
 
 local function updateCanvas(canvas, t)
@@ -1250,9 +1437,11 @@ local function updateCanvas(canvas, t)
       local left = d.expires - t
       b:SetMinMaxValues(0, total > 0 and total or 1)
       b:SetValue(left > 0 and left or 0)
-      b.time:SetText(fmtTime(left))
-      timeColor(b.time, left)
-      b:SetAlpha(d.confirmed and 1 or 0.75)
+      timeText(b.time, d, left)
+      b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t))
+      placeTicks(b, b, d, t, total)
+    elseif b.ticks then
+      for _, mark in ipairs(b.ticks) do mark:Hide() end
     end
   end
   for _, b in ipairs(canvas.slims) do
@@ -1262,9 +1451,11 @@ local function updateCanvas(canvas, t)
       local left = d.expires - t
       b.bar:SetMinMaxValues(0, total > 0 and total or 1)
       b.bar:SetValue(left > 0 and left or 0)
-      b.time:SetText(fmtTime(left))
-      timeColor(b.time, left)
-      b:SetAlpha(d.confirmed and 1 or 0.75)
+      timeText(b.time, d, left)
+      b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t))
+      placeTicks(b, b.bar, d, t, total)
+    elseif b.ticks then
+      for _, mark in ipairs(b.ticks) do mark:Hide() end
     end
   end
   for _, pool in ipairs({ canvas.cells, canvas.minis, canvas.tcells }) do
@@ -1272,9 +1463,25 @@ local function updateCanvas(canvas, t)
       local d = c.dot
       if d and c:IsShown() then
         local left = d.expires - t
-        c.time:SetText(fmtTime(left))
-        timeColor(c.time, left)
-        c:SetAlpha(d.confirmed and 1 or 0.8)
+        timeText(c.time, d, left)
+        c:SetAlpha((d.confirmed and 1 or 0.8) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t))
+      end
+    end
+  end
+end
+
+-- refresh warning sound: once per DoT when it drops under the warning time
+local function checkWarnings(t)
+  if db.warn == false or not db.warnSound then return end
+  local tg = guidOf("target")
+  for g, m in pairs(mobs) do
+    for _, d in pairs(m.dots) do
+      local left = d.expires - t
+      if not d.warned and left > 0 and left <= (db.warnTime or 3) and not d.lost and not d.info.def.cc then
+        d.warned = true
+        if not db.warnTargetOnly or g == tg then
+          pcall(PlaySound, (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
+        end
       end
     end
   end
@@ -1291,7 +1498,9 @@ local function layout()
   anchorText:SetShown(not db.locked and empty)
   frame:EnableMouse(not db.locked)
   frame:SetSize(math.max(w, 160), math.max(h, ROW_H))
-  frame:SetShown(not empty or not db.locked)
+  local ooc = not LOOK.inCombat and db.locked
+  frame:SetShown((not empty or not db.locked) and not (ooc and db.ooc == "hide"))
+  frame:SetAlpha(ooc and db.ooc == "fade" and 0.4 or 1)
   layoutPlates(function(name) return sameNameCount(name) end, LETTERS)
   if preview and preview.box:IsVisible() then preview.redraw() end
 end
@@ -1300,6 +1509,7 @@ local function updateBars()
   local t = now()
   updatePlateTimes(t)
   updateCanvas(main, t)
+  checkWarnings(t)
   if preview and preview.box:IsVisible() then preview.tick(t) end
 end
 
@@ -1394,6 +1604,9 @@ end
 -- on whatever you are targeting. Secure buttons can't change, move, show or
 -- hide in combat, so they are built out of combat and shown by a state driver.
 -- Modes: "off", "free" (place it anywhere) and "dock" (under the target frame).
+BINDING_HEADER_DOTWATCH = "DotWatch"
+for i = 1, 5 do _G["BINDING_NAME_CLICK DotWatchTargetBarButton" .. i .. ":LeftButton"] = "Target bar " .. i end
+
 local tbar, tbHandle, tbName, tbHP
 local tbButtons = {}
 local TB_SHOW = "[@target,harm,nodead] show; hide"
@@ -1438,9 +1651,17 @@ local function tbCreateButton(i)
   pcall(cd.SetHideCountdownNumbers, cd, true)
   pcall(cd.SetDrawEdge, cd, false)
   b.cd = cd
+  -- global cooldown / spell cooldown, like an action button (drawn over the DoT sweep)
+  local okg, gcd = pcall(CreateFrame, "Cooldown", nil, b, "CooldownFrameTemplate")
+  if not okg then gcd = CreateFrame("Cooldown", nil, b) end
+  gcd:SetAllPoints()
+  pcall(gcd.SetHideCountdownNumbers, gcd, true)
+  pcall(gcd.SetDrawEdge, gcd, true)
+  gcd:SetFrameLevel((cd:GetFrameLevel() or 1) + 1)
+  b.gcd = gcd
   b.holder = CreateFrame("Frame", nil, b)
   b.holder:SetAllPoints()
-  b.holder:SetFrameLevel((cd:GetFrameLevel() or 1) + 2)
+  b.holder:SetFrameLevel((cd:GetFrameLevel() or 1) + 3)
   b.time = b.holder:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
   b.time:SetPoint("CENTER")
   b.hint = b.holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1534,11 +1755,94 @@ local function buildTargetBar()
   else
     tbar:Show()
   end
+  for i = 1, 5 do
+    local s = slots[i]
+    _G["BINDING_NAME_CLICK DotWatchTargetBarButton" .. i .. ":LeftButton"] =
+      "Target bar " .. i .. (s and (": " .. s.name) or "")
+  end
   dbg("TARGETBAR built: " .. mode .. ", " .. #slots .. " buttons")
+end
+
+-- action-button state: range, mana, cooldown. Every API is tried carefully and
+-- what Forever allows is logged once (TBAPI lines in the debug log).
+local TBA = { nextCheck = 0, logged = {} }
+local function tbaLog(key, msg)
+  if TBA.logged[key] then return end
+  TBA.logged[key] = true
+  dbg("TBAPI " .. msg)
+end
+
+local function tbActionState(b, t)
+  local name = b.spellName
+  -- range
+  local outOfRange = false
+  local f = (C_Spell and C_Spell.IsSpellInRange) or IsSpellInRange
+  if f then
+    local ok, v = pcall(f, name, "target")
+    if not ok then tbaLog("range-err", "range: error " .. tostring(v))
+    elseif issecret(v) then tbaLog("range-secret", "range: secret")
+    else
+      tbaLog("range-ok", "range: readable")
+      outOfRange = (v == false or v == 0)
+    end
+  else
+    tbaLog("range-missing", "range: no API")
+  end
+  -- mana
+  local noMana = false
+  f = (C_Spell and C_Spell.IsSpellUsable) or IsUsableSpell
+  if f then
+    local ok, usable, lacking = pcall(f, name)
+    if not ok then tbaLog("usable-err", "usable: error " .. tostring(usable))
+    elseif issecret(lacking) then tbaLog("usable-secret", "usable: secret")
+    else
+      tbaLog("usable-ok", "usable: readable")
+      noMana = lacking == true or lacking == 1
+    end
+  end
+  -- cooldown / global cooldown
+  local start, dur
+  if C_Spell and C_Spell.GetSpellCooldown then
+    local ok, info = pcall(C_Spell.GetSpellCooldown, name)
+    if ok and type(info) == "table" and not issecret(info) then start, dur = info.startTime, info.duration end
+  elseif GetSpellCooldown then
+    local ok, s1, d1 = pcall(GetSpellCooldown, name)
+    if ok then start, dur = s1, d1 end
+  end
+  if issecret(start) or issecret(dur) then
+    tbaLog("cd-secret", "cooldown: secret, handed to the widget")
+    if b.gcdStart ~= start then
+      b.gcdStart = start
+      pcall(b.gcd.SetCooldown, b.gcd, start, dur)
+    end
+  elseif type(start) == "number" and type(dur) == "number" then
+    tbaLog("cd-ok", "cooldown: readable")
+    if dur > 0 and start > 0 then
+      if b.gcdStart ~= start or b.gcdDur ~= dur then
+        b.gcdStart, b.gcdDur = start, dur
+        b.gcd:Show()
+        pcall(b.gcd.SetCooldown, b.gcd, start, dur)
+      end
+    elseif b.gcdStart then
+      b.gcdStart, b.gcdDur = nil, nil
+      pcall(b.gcd.SetCooldown, b.gcd, 0, 0)
+    end
+  else
+    tbaLog("cd-none", "cooldown: not available")
+  end
+  if outOfRange then
+    b.icon:SetVertexColor(0.9, 0.25, 0.25)
+  elseif noMana then
+    b.icon:SetVertexColor(0.35, 0.4, 1)
+  else
+    b.icon:SetVertexColor(1, 1, 1)
+  end
 end
 
 local function updateTargetBar(t)
   if not (tbar and tbar:IsShown()) then return end
+  local checkState = db.tbAction ~= false and t >= TBA.nextCheck
+  if checkState then TBA.nextCheck = t + 0.1 end
   local g = guidOf("target")
   local m = g and mobs[g]
   local immune = db.immune[npcID(g or "") or 0] or {}
@@ -1551,18 +1855,19 @@ local function updateTargetBar(t)
         end
       end
       b.running = active ~= nil
+      if checkState then tbActionState(b, t)
+      elseif db.tbAction == false then b.icon:SetVertexColor(1, 1, 1) end
       if active then
+        local left = active.expires - t
         b.icon:SetTexture(active.info.icon)
-        b.icon:SetDesaturated(false)
-        b.icon:SetAlpha(active.confirmed and 1 or 0.85)
+        b.icon:SetDesaturated(active.lost and true or false)
+        b.icon:SetAlpha((active.confirmed and 1 or 0.85) * LOOK.pulse(active, left, t))
         if b.cdStart ~= active.start or b.cdEnd ~= active.expires then
           b.cdStart, b.cdEnd = active.start, active.expires
           b.cd:Show()
           pcall(b.cd.SetCooldown, b.cd, active.start, active.expires - active.start)
         end
-        local left = active.expires - t
-        b.time:SetText(fmtTime(left))
-        timeColor(b.time, left)
+        timeText(b.time, active, left)
         b.hint:SetText("")
       else
         b.icon:SetDesaturated(true)
@@ -1615,7 +1920,7 @@ local initSettings, openOptions -- defined with the options window further down
 ---------------------------------------------------------------------------
 local ev = CreateFrame("Frame")
 local function reg(e) pcall(ev.RegisterEvent, ev, e) end
-for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED",
+for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_TARGET_CHANGED",
   "UNIT_COMBAT", "UNIT_AURA", "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB", "CHARACTER_POINTS_CHANGED",
   "PLAYER_TALENT_UPDATE", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED" }) do
   reg(e)
@@ -1685,10 +1990,21 @@ ev:SetScript("OnEvent", function(_, event, ...)
     onUnitAura(...)
   elseif event == "PLAYER_TARGET_CHANGED" or event == "NAME_PLATE_UNIT_ADDED" or event == "NAME_PLATE_UNIT_REMOVED" then
     dirty = true
+  elseif event == "PLAYER_REGEN_DISABLED" then
+    LOOK.inCombat = true
+    fight.start, fight.casts, fight.resisted, fight.immune, fight.refreshes, fight.lost = now(), 0, 0, 0, 0, 0
+    dirty = true
   elseif event == "PLAYER_REGEN_ENABLED" then
+    LOOK.inCombat = false
     -- don't wipe: the out-of-combat sync checks the real debuffs instead
     if next(mobs) then dbg("COMBAT END: timers kept, checking real debuffs") end
     wipe(pending)
+    if db.summary and fight.casts > 0 then
+      local secs = math.floor(now() - fight.start + 0.5)
+      say(string.format("Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s",
+        math.floor(secs / 60), secs % 60, fight.casts, fight.refreshes, fight.resisted, fight.immune,
+        fight.lost > 0 and (", " .. fight.lost .. " lost?") or ""))
+    end
     dirty = true
   elseif event == "PLAYER_LOGIN" then
     scanSpellbook("login")
@@ -1929,6 +2245,229 @@ local function buildSample()
   return list, "preview-A"
 end
 
+-- a row of radio buttons with a label in front: { {value, label, help}, ... }
+local function radioRow(parent, label, x, y, items, get, set)
+  local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  fs:SetPoint("TOPLEFT", x, y - 2)
+  fs:SetText(label)
+  local rx = x + 96
+  for _, it in ipairs(items) do
+    local rb = makeRadio(parent, it[2], it[3], it[1], get, set)
+    rb:SetPoint("TOPLEFT", rx, y)
+    rx = rx + 26 + rb.text:GetStringWidth() + 14
+  end
+end
+
+-- the game's color picker (old and new API)
+local function pickColor(r, g, b, onChange)
+  local cpf = ColorPickerFrame
+  if not cpf then return end
+  local function cur() return cpf:GetColorRGB() end
+  if cpf.SetupColorPickerAndShow then
+    cpf:SetupColorPickerAndShow({ r = r, g = g, b = b, hasOpacity = false,
+      swatchFunc = function() onChange(cur()) end, cancelFunc = function() onChange(r, g, b) end })
+  else
+    cpf.hasOpacity = false
+    cpf.previousValues = { r, g, b }
+    cpf.func = function() onChange(cur()) end
+    cpf.cancelFunc = function() onChange(r, g, b) end
+    cpf:SetColorRGB(r, g, b)
+    cpf:Hide()
+    cpf:Show()
+  end
+  pcall(cpf.SetFrameStrata, cpf, "FULLSCREEN_DIALOG")
+end
+
+-- page: Look (font size, bar texture, colors per DoT); the preview sits on the right
+local function buildLookPage(pg, COL)
+  makeSection(pg, "Font size", -54, 24, COL)
+  local rx = 28
+  for _, key in ipairs(LOOK.FONT_ORDER) do
+    local rb = makeRadio(pg, LOOK.FONTS[key].label, "Text size in the list.", key,
+      function() return db.fontSize or "small" end, function(v) db.fontSize = v end)
+    rb:SetPoint("TOPLEFT", rx, -78)
+    rx = rx + 26 + rb.text:GetStringWidth() + 10
+  end
+
+  makeSection(pg, "Bar texture", -110, 24, COL)
+  local ty = -134
+  for _, t in ipairs(LOOK.TEXTURES) do
+    makeRadio(pg, t.label, "Texture of the bars (Bars and Slim bars styles).", t.key,
+      function() return db.texture or "classic" end, function(v) db.texture = v end):SetPoint("TOPLEFT", 28, ty)
+    local sw = pg:CreateTexture(nil, "ARTWORK")
+    sw:SetTexture(t.file)
+    sw:SetVertexColor(0.62, 0.30, 0.95)
+    sw:SetSize(70, 10)
+    sw:SetPoint("TOPLEFT", 140, ty - 3)
+    ty = ty - 22
+  end
+
+  makeSection(pg, "DoT colors", ty - 10, 24, COL)
+  ty = ty - 34
+  local swatches = {}
+  local col = 0
+  for _, sp in ipairs(SPELLS) do
+    local sx = 28 + col * 104
+    local btn = CreateFrame("Button", nil, pg)
+    btn:SetSize(100, 18)
+    btn:SetPoint("TOPLEFT", sx, ty)
+    btn.sw = btn:CreateTexture(nil, "ARTWORK")
+    btn.sw:SetSize(14, 14)
+    btn.sw:SetPoint("LEFT")
+    btn.edge = btn:CreateTexture(nil, "BACKGROUND")
+    btn.edge:SetColorTexture(0, 0, 0, 1)
+    btn.edge:SetPoint("TOPLEFT", btn.sw, -1, 1)
+    btn.edge:SetPoint("BOTTOMRIGHT", btn.sw, 1, -1)
+    btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    btn.text:SetPoint("LEFT", btn.sw, "RIGHT", 4, 0)
+    btn.text:SetWidth(80)
+    btn.text:SetJustifyH("LEFT")
+    btn.text:SetText((sp.name:gsub("^Curse of ", "C. of "):gsub("^Bane of ", "B. of ")))
+    btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    btn.sp = sp
+    btn:SetScript("OnClick", function(self)
+      local c = LOOK.color(self.sp)
+      pickColor(c[1], c[2], c[3], function(r, g, b)
+        db.colors[self.sp.name] = { r, g, b }
+        self.sw:SetColorTexture(r, g, b)
+        dirty = true
+      end)
+    end)
+    tip(btn, sp.name, "Click to pick its color.")
+    btn.refresh = function()
+      local c = LOOK.color(btn.sp)
+      btn.sw:SetColorTexture(c[1], c[2], c[3])
+      btn:SetShown(known[btn.sp.name] ~= nil)
+    end
+    controls[#controls + 1] = btn
+    swatches[#swatches + 1] = btn
+  end
+  -- lay out only the known spells, two per row
+  pg:HookScript("OnShow", function()
+    local i, y0 = 0, ty
+    for _, btn in ipairs(swatches) do
+      btn.refresh()
+      if btn:IsShown() then
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", 28 + (i % 2) * 104, y0 - math.floor(i / 2) * 20)
+        i = i + 1
+      end
+    end
+  end)
+  local reset = makeButton(pg, "Default colors", 120, function()
+    wipe(db.colors)
+    for _, c in ipairs(controls) do c.refresh() end
+    dirty = true
+  end)
+  reset:SetPoint("BOTTOMLEFT", 24, 6)
+end
+
+-- page: Timers (refresh warning, ticks, lost, control spells)
+local function buildTimersPage(pg)
+  local y = -54
+  makeSection(pg, "Refresh warning", y)
+  y = y - 22
+  makeCheck(pg, "Pulse DoTs that are about to run out", "The DoT blinks softly in the last seconds, in the list and on the target bar.",
+    function() return db.warn ~= false end, function(v) db.warn = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 44
+  makeSlider(pg, "Warn when less than", 1, 6, 1, "%d s",
+    function() return db.warnTime or 3 end, function(v) db.warnTime = v end):SetPoint("TOPLEFT", 30, y)
+  y = y - 36
+  makeCheck(pg, "Play a sound", "A short warning sound once per DoT.",
+    function() return db.warnSound end, function(v) db.warnSound = v end):SetPoint("TOPLEFT", 26, y)
+  makeCheck(pg, "Sound only for my target", "No sounds for the other enemies.",
+    function() return db.warnTargetOnly ~= false end, function(v) db.warnTargetOnly = v end):SetPoint("TOPLEFT", 250, y)
+  y = y - 36
+
+  makeSection(pg, "Ticks", y)
+  y = y - 22
+  makeCheck(pg, "Tick marks on the bars", "A thin line for every damage tick still to come (Bars and Slim bars).",
+    function() return db.ticks ~= false end, function(v) db.ticks = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 26
+  makeCheck(pg, "Mark DoTs as \"lost?\" when their ticks stop", "If an enemy you can see takes no more ticks of a DoT's school, the DoT was probably removed.",
+    function() return db.lostCheck ~= false end, function(v) db.lostCheck = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 36
+
+  makeSection(pg, "Control", y)
+  y = y - 22
+  makeCheck(pg, "Timers for Fear, Banish, Enslave Demon and Death Coil", "Shown like curses, below the DoTs of that enemy.",
+    function() return db.trackCC ~= false end, function(v) db.trackCC = v wipe(spellCache) end):SetPoint("TOPLEFT", 26, y)
+end
+
+-- page: Statistics (resists per enemy type, fight summary)
+local function buildStatsPage(pg)
+  local y = -54
+  makeSection(pg, "Statistics", y)
+  y = y - 22
+  makeCheck(pg, "Record resists per enemy type", "Counts casts, resists and immunes per enemy type and spell.",
+    function() return db.recordStats ~= false end, function(v) db.recordStats = v end):SetPoint("TOPLEFT", 26, y)
+  makeCheck(pg, "Fight summary in chat", "One line after each fight: DoTs cast, refreshed, resisted, immune.",
+    function() return db.summary end, function(v) db.summary = v end):SetPoint("TOPLEFT", 250, y)
+  y = y - 34
+
+  local box = CreateFrame("Frame", nil, pg, BACKDROP_TEMPLATE)
+  box:SetPoint("TOPLEFT", 24, y)
+  box:SetPoint("BOTTOMRIGHT", -24, 36)
+  if box.SetBackdrop then
+    box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    box:SetBackdropColor(0.08, 0.06, 0.04, 0.9)
+    box:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
+  end
+  local ok, sf = pcall(CreateFrame, "ScrollFrame", "DotWatchStatsScroll", box, "UIPanelScrollFrameTemplate")
+  if not ok then sf = CreateFrame("ScrollFrame", nil, box) end
+  sf:SetPoint("TOPLEFT", 8, -8)
+  sf:SetPoint("BOTTOMRIGHT", -28, 8)
+  local content = CreateFrame("Frame", nil, sf)
+  content:SetSize(440, 10)
+  sf:SetScrollChild(content)
+  local text = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  text:SetPoint("TOPLEFT")
+  text:SetWidth(430)
+  text:SetJustifyH("LEFT")
+  text:SetSpacing(2)
+
+  local function fill()
+    local rows = {}
+    for npc, e in pairs(db.stats) do
+      local total = 0
+      for _, sp in pairs(e.s) do total = total + sp.c end
+      rows[#rows + 1] = { e = e, total = total }
+    end
+    table.sort(rows, function(a, b) return a.total > b.total end)
+    local lines = {}
+    for _, r in ipairs(rows) do
+      lines[#lines + 1] = "|cffffd100" .. (r.e.name or "?") .. "|r"
+      local names = {}
+      for name in pairs(r.e.s) do names[#names + 1] = name end
+      table.sort(names)
+      for _, name in ipairs(names) do
+        local sp = r.e.s[name]
+        local resisted = sp.c > 0 and math.floor(sp.r / sp.c * 100 + 0.5) or 0
+        local parts = { string.format("%d cast%s", sp.c, sp.c == 1 and "" or "s") }
+        if sp.r > 0 then parts[#parts + 1] = string.format("|cffff7755%d resisted (%d%%)|r", sp.r, resisted) end
+        if sp.i > 0 then parts[#parts + 1] = string.format("|cffcc5555%d immune|r", sp.i) end
+        lines[#lines + 1] = "    " .. name .. ": " .. table.concat(parts, ", ")
+      end
+    end
+    if #lines == 0 then lines[1] = "|cff888888Nothing recorded yet. Fight something!|r" end
+    text:SetText(table.concat(lines, "\n"))
+    content:SetHeight(math.max((text:GetStringHeight() or 0) + 10, 10))
+  end
+  pg:HookScript("OnShow", fill)
+
+  StaticPopupDialogs = StaticPopupDialogs or {}
+  StaticPopupDialogs["DOTWATCH_RESET_STATS"] = {
+    text = "Delete all DotWatch statistics?\nKnown immunities are deleted too.",
+    button1 = YES or "Yes", button2 = NO or "No",
+    OnAccept = function() wipe(db.stats) wipe(db.immune) fill() dirty = true end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  local reset = makeButton(pg, "Reset statistics", 140, function() StaticPopup_Show("DOTWATCH_RESET_STATS") end)
+  reset:SetPoint("BOTTOMLEFT", 24, 6)
+end
+
 local function buildOptions()
   local f = CreateFrame("Frame", "DotWatchOptions", UIParent, BACKDROP_TEMPLATE)
   f:SetSize(700, 480)
@@ -1978,7 +2517,7 @@ local function buildOptions()
   -- pages on the right, chosen in the list on the left
   local NAV_W = 160
   local pages = {}
-  for i = 1, 3 do
+  for i = 1, 6 do
     local pg = CreateFrame("Frame", nil, f)
     pg:SetPoint("TOPLEFT", NAV_W, 0)
     pg:SetPoint("BOTTOMRIGHT", 0, 50)
@@ -1992,7 +2531,19 @@ local function buildOptions()
   y = y - 22
   makeCheck(g, "Lock window", "Locked: the window only shows up while timers run and can't be dragged.",
     function() return db.locked end, function(v) db.locked = v end):SetPoint("TOPLEFT", 26, y)
-  y = y - 36
+  y = y - 30
+  radioRow(g, "Grows", 30, y, {
+    { "middle", "From the middle", "The list grows up and down from its center." },
+    { "down", "Downward", "The top edge stays put." },
+    { "up", "Upward", "The bottom edge stays put." },
+  }, function() return db.grow or "middle" end, function(v) db.grow = v LOOK.anchor() end)
+  y = y - 24
+  radioRow(g, "Out of combat", 30, y, {
+    { "show", "Show", "The list stays as it is." },
+    { "fade", "Fade", "The list turns see-through out of combat (while locked)." },
+    { "hide", "Hide", "The list only shows up in combat (while locked)." },
+  }, function() return db.ooc or "show" end, function(v) db.ooc = v end)
+  y = y - 34
 
   makeSection(g, "Nameplates", y)
   y = y - 22
@@ -2100,8 +2651,18 @@ local function buildOptions()
   preview = pv
   box:SetScript("OnShow", function() pv.redraw() end)
 
-  ---------------- page 3: Target bar ----------------
-  local tp = pages[3]
+  ---------------- page 3: Look ----------------
+  buildLookPage(pages[3], 232)
+  makeSection(pages[3], "Preview", -54, 248)
+
+  ---------------- page 4: Timers ----------------
+  buildTimersPage(pages[4])
+
+  ---------------- page 6: Statistics ----------------
+  buildStatsPage(pages[6])
+
+  ---------------- page 5: Target bar ----------------
+  local tp = pages[5]
   local function tbChanged() tbDirty = true if InCombatLockdown() then say("Target bar changes apply after combat.") end end
   makeSection(tp, "Target bar", -54)
   local intro = tp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2123,6 +2684,9 @@ local function buildOptions()
   ty = ty - 8
   makeCheck(tp, "Name and health above the bar", "Only when the bar is placed freely; docked, your target frame already shows them.",
     function() return db.tbLabel ~= false end, function(v) db.tbLabel = v tbChanged() end):SetPoint("TOPLEFT", 24, ty)
+  ty = ty - 26
+  makeCheck(tp, "Like an action bar: range, mana, cooldown", "Red when out of range, blue without enough mana, and the global cooldown sweep.",
+    function() return db.tbAction ~= false end, function(v) db.tbAction = v end):SetPoint("TOPLEFT", 24, ty)
   ty = ty - 46
   makeSlider(tp, "Button size", 24, 52, 2, "%d px",
     function() return db.tbSize or 36 end, function(v) db.tbSize = v tbChanged() end):SetPoint("TOPLEFT", 28, ty)
@@ -2136,7 +2700,7 @@ local function buildOptions()
   note:SetPoint("BOTTOMLEFT", 26, 8)
   note:SetPoint("RIGHT", tp, "RIGHT", -26, 0)
   note:SetJustifyH("LEFT")
-  note:SetText("The game doesn't allow these buttons to change during combat, so changes here apply when combat ends.")
+  note:SetText("Keys: Game Menu > Key Bindings > AddOns > DotWatch. The game doesn't allow these buttons to change during combat, so changes here apply when combat ends.")
 
   ---------------- navigation list on the left ----------------
   local navBg = CreateFrame("Frame", nil, f, BACKDROP_TEMPLATE)
@@ -2158,9 +2722,17 @@ local function buildOptions()
       if k == i then it.label:SetTextColor(1, 1, 1) else it.label:SetTextColor(1, 0.82, 0) end
     end
     f.page = i
-    if i == 2 then pv.redraw() end
+    if i == 2 or i == 3 then
+      -- one preview, shown on the Display and the Look page
+      box:SetParent(pages[i])
+      box:ClearAllPoints()
+      box:SetPoint("TOPLEFT", pages[i], "TOPLEFT", 248, -76)
+      box:SetPoint("BOTTOMRIGHT", pages[i], "BOTTOMRIGHT", -22, 6)
+      box:Show()
+      pv.redraw()
+    end
   end
-  for i, label in ipairs({ "General", "Display", "Target bar" }) do
+  for i, label in ipairs({ "General", "Display", "Look", "Timers", "Target bar", "Statistics" }) do
     local it = CreateFrame("Button", nil, navBg)
     it:SetSize(NAV_W - 34, 24)
     it:SetPoint("TOPLEFT", 9, -10 - (i - 1) * 26)
@@ -2296,6 +2868,22 @@ initSettings = function()
   db.targetBar = db.targetBar or "free"
   -- 0.7.1 had a "tracker" mode that was rolled back
   if db.targetBar ~= "off" and db.targetBar ~= "free" and db.targetBar ~= "dock" then db.targetBar = "free" end
+  db.stats = db.stats or {}
+  db.untracked = db.untracked or {}
+  db.colors = db.colors or {}
+  if db.warn == nil then db.warn = true end
+  db.warnTime = db.warnTime or 3
+  if db.warnTargetOnly == nil then db.warnTargetOnly = true end
+  if db.ticks == nil then db.ticks = true end
+  if db.lostCheck == nil then db.lostCheck = true end
+  if db.trackCC == nil then db.trackCC = true end
+  if db.tbAction == nil then db.tbAction = true end
+  if db.recordStats == nil then db.recordStats = true end
+  db.fontSize = db.fontSize or "small"
+  db.texture = db.texture or "classic"
+  db.grow = db.grow or "middle"
+  db.ooc = db.ooc or "show"
+  LOOK.inCombat = UnitAffectingCombat and plain(UnitAffectingCombat, "player") == true or false
   applySettings()
 end
 openOptions = toggleOptions

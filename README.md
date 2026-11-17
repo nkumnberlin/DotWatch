@@ -13,6 +13,12 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Health %** next to each enemy's name, colored from green to yellow to red.
 - **Five display styles**: bars, slim bars, icons with timers, table, and target big with others small. You can switch between them in the options, with a live preview.
 - **Target bar**: one clickable button per DoT for your current target. A click casts the DoT, or refreshes it if it's already running. You can place the bar anywhere or dock it under your target frame.
+- **Refresh warning**: DoTs pulse in their last seconds, optionally with a sound.
+- **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop.
+- **Control timers** for Fear, Banish, Enslave Demon and Death Coil.
+- **Target bar like an action bar**: red when out of range, blue without enough mana, global cooldown sweep, and keybindings (Key Bindings > AddOns > DotWatch).
+- **Look options**: font size, bar texture, a color per DoT, growth direction, fading out of combat.
+- **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
 - **Classic options window** and a minimap button with the Eye of Kilrogg icon.
 
 ## Install
