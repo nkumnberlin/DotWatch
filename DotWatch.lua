@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.11"
+local VERSION = "0.12"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -109,6 +109,18 @@ local SPELLS = {
   { name = "Enslave Demon",         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true },
   { name = "Death Coil",            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
 }
+-- 0.12: every spell belongs to a class. Only warlock spells exist so far; other
+-- classes (Shadow Priest, Druid, ...) get their own entries later.
+for _, s in ipairs(SPELLS) do s.class = s.class or "WARLOCK" end
+local myClassFile
+local function myClass()
+  if not myClassFile then
+    local _, file = UnitClass("player")
+    if type(file) == "string" and not (issecretvalue and issecretvalue(file)) then myClassFile = file end
+  end
+  return myClassFile
+end
+local function isMine(s) return s.class == (myClass() or "WARLOCK") end
 local DEF_BY_NAME = {}
 for _, s in ipairs(SPELLS) do DEF_BY_NAME[s.name] = s end
 local SLOT_ORDER = { "corruption", "immolate", "siphon", "ua", "bane" }
@@ -223,7 +235,7 @@ end
 local function scanByName()
   if not (C_Spell and C_Spell.GetSpellInfo) then return false end
   for _, s in ipairs(SPELLS) do
-    local info = plain(C_Spell.GetSpellInfo, s.name)
+    local info = isMine(s) and plain(C_Spell.GetSpellInfo, s.name)
     local id = type(info) == "table" and num(info.spellID)
     if id then
       local isKnown = (IsPlayerSpell and plain(IsPlayerSpell, id)) or (IsSpellKnown and plain(IsSpellKnown, id))
@@ -1710,6 +1722,7 @@ local initSettings, openOptions -- defined with the options window further down
 ---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
+local registerSettings -- defined with the options window, further down
 local ev = CreateFrame("Frame")
 local function reg(e) pcall(ev.RegisterEvent, ev, e) end
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_TARGET_CHANGED",
@@ -1819,6 +1832,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
     dirty = true
   elseif event == "PLAYER_LOGIN" then
     scanSpellbook("login")
+    registerSettings()
   else
     scheduleBookScan(event)
   end
@@ -2113,7 +2127,18 @@ local function buildLookPage(pg, COL)
     ty = ty - 22
   end
 
-  makeSection(pg, "DoT colors", ty - 10, 24, COL)
+  -- 0.12: the color list follows the class you play
+  local className, classFile = UnitClass("player")
+  local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
+  local classLabel = className or "?"
+  if cc then classLabel = string.format("|cff%02x%02x%02x%s|r", cc.r * 255, cc.g * 255, cc.b * 255, classLabel) end
+  makeSection(pg, "DoT colors: " .. classLabel, ty - 10, 24, COL)
+  local noClass = pg:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  noClass:SetPoint("TOPLEFT", 28, ty - 34)
+  noClass:SetWidth(200)
+  noClass:SetJustifyH("LEFT")
+  noClass:SetText((className or "This class") .. " has no DoT list yet. It will come in a later version.")
+  noClass:Hide()
   ty = ty - 34
   local swatches = {}
   local col = 0
@@ -2148,7 +2173,7 @@ local function buildLookPage(pg, COL)
     btn.refresh = function()
       local c = LOOK.color(btn.sp)
       btn.sw:SetColorTexture(c[1], c[2], c[3])
-      btn:SetShown(known[btn.sp.name] ~= nil)
+      btn:SetShown(isMine(btn.sp) and known[btn.sp.name] ~= nil)
     end
     controls[#controls + 1] = btn
     swatches[#swatches + 1] = btn
@@ -2156,7 +2181,9 @@ local function buildLookPage(pg, COL)
   -- lay out only the known spells, two per row
   pg:HookScript("OnShow", function()
     local i, y0 = 0, ty
+    local any = false
     for _, btn in ipairs(swatches) do
+      if isMine(btn.sp) then any = true end
       btn.refresh()
       if btn:IsShown() then
         btn:ClearAllPoints()
@@ -2164,6 +2191,7 @@ local function buildLookPage(pg, COL)
         i = i + 1
       end
     end
+    noClass:SetShown(not any)
   end)
   local reset = makeButton(pg, "Default colors", 120, function()
     wipe(db.colors)
@@ -2611,6 +2639,48 @@ end
 local function toggleOptions()
   opt = opt or buildOptions()
   if opt:IsShown() then opt:Hide() else opt:Show() end
+end
+
+-- 0.12: an entry under Escape > Options > AddOns. Only the official registration
+-- calls; no Blizzard tables are written (see the 0.9.1 taint lesson).
+local settingsPanel
+registerSettings = function()
+  if settingsPanel then return end
+  local p = CreateFrame("Frame", "DotWatchSettingsPanel")
+  p.name = "DotWatch"
+  local logo = p:CreateTexture(nil, "ARTWORK")
+  logo:SetSize(40, 40)
+  logo:SetPoint("TOPLEFT", 16, -16)
+  logo:SetTexture("Interface\\Icons\\Spell_Shadow_EvilEye")
+  local title = p:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("LEFT", logo, "RIGHT", 10, 6)
+  title:SetText("DotWatch")
+  local ver = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  ver:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
+  ver:SetText("Version " .. VERSION)
+  local text = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  text:SetPoint("TOPLEFT", logo, "BOTTOMLEFT", 0, -16)
+  text:SetWidth(520)
+  text:SetJustifyH("LEFT")
+  text:SetText("DoT timers for every enemy you dot. All settings are in DotWatch's own window "
+    .. "(also: /dw or the eye on the minimap).")
+  local open = makeButton(p, "Open DotWatch options", 200, function()
+    opt = opt or buildOptions()
+    opt:Show()
+    opt:Raise()
+  end)
+  open:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -16)
+  local ok = false
+  if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
+    ok = pcall(function()
+      local cat = Settings.RegisterCanvasLayoutCategory(p, "DotWatch")
+      Settings.RegisterAddOnCategory(cat)
+    end)
+  elseif InterfaceOptions_AddCategory then
+    ok = pcall(InterfaceOptions_AddCategory, p)
+  end
+  dbg("SETTINGS entry " .. (ok and "registered" or "not available"))
+  settingsPanel = p
 end
 
 ---------------------------------------------------------------------------
