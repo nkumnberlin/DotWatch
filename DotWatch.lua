@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.10"
+local VERSION = "0.10.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1129,11 +1129,9 @@ local function placeHeader(m, tg, x, y, big)
   h:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", x, -y)
   h:Show()
   h.hp:ClearAllPoints()
-  if m.hidden then
-    h.hp:SetPoint("LEFT", h, "RIGHT", 5, 0) -- width of a hidden name can't be read
-  else
-    h.hp:SetPoint("LEFT", h, "LEFT", (h:GetStringWidth() or 0) + 5, 0)
-  end
+  -- 0.10.1: never read the name's width. Once a header showed a hidden (secret) dungeon
+  -- name, the game keeps its width secret, and reading it broke the whole window.
+  h.hp:SetPoint("LEFT", h, "RIGHT", 5, 0)
   h.hp:Show()
   if m.fakeHP then
     h.hp:SetFormattedText("%d%%", m.fakeHP)
@@ -1552,12 +1550,19 @@ local function checkWarnings(t)
   end
 end
 
+local drawErrors = 0
 local preview -- set up by the options window: { canvas, box, list, tg }
 
 local function layout()
   dirty = false
   local list, tg = sortedMobs()
-  local h, w = drawCanvas(main, list, tg, db.style)
+  local okD, h, w = pcall(drawCanvas, main, list, tg, db.style)
+  if not okD then
+    -- one bad draw must not take the window down for the rest of the session
+    if drawErrors < 5 then dbg("DRAW ERROR " .. tostring(h)) end
+    drawErrors = drawErrors + 1
+    h, w = 0, 200
+  end
   local empty = #list == 0
   anchorBg:SetShown(not db.locked)
   anchorText:SetShown(not db.locked and empty)
