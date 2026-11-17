@@ -438,7 +438,7 @@ f:SetScript("OnEvent", function(self, event, ...)
       db = DotProbeDB
       db.log = db.log or {}
       if db.echo == nil then db.echo = false end
-      say("0.4 loaded. /dp help for commands. Log: " .. #db.log .. " lines.")
+      say("0.4.1 loaded. /dp help for commands. Log: " .. #db.log .. " lines.")
       if db.npOrig then
         say("|cffffaa00Nameplate CVars are still changed from a hide test. /dp show restores them.|r")
       end
@@ -529,6 +529,7 @@ local HELP = {
   "/dp land           - landing chat lines on/off; /dp landstats = summary",
   "/dp click [spell]  - click test: rows per enemy nameplate, left = cast there, right = target",
   "/dp click status   - why rows are missing (states, nameplates, conditional)",
+  "/dp npmap [off]    - which nameplate is my target (dungeon test)",
   "/dp dots [off]     - dungeon test: your debuffs on the target, drawn by the game",
   "/dp echo | aura | status | clear | help",
 }
@@ -854,6 +855,86 @@ local function auCommand(rest)
   say("Aura test on: shows YOUR debuffs on your target, drawn by the game. /dp dots off hides it.")
 end
 
+
+---------------------------------------------------------------------------
+-- 0.4.1: which nameplate is my target? (dungeon: names/GUIDs are secret)
+-- /dp np: logs UnitIsUnit / C_NamePlate on target change, own casts and every 2 s in combat;
+-- also tries to draw the secret target name in a small label.
+---------------------------------------------------------------------------
+local npt = { on = false, last = 0 }
+local function npTest(why)
+  local parts = {}
+  local okU = 0
+  for i = 1, 40 do
+    local u = "nameplate" .. i
+    if UnitExists(u) then
+      local ok, r = pcall(UnitIsUnit, "target", u)
+      local v = ok and (issecret(r) and "S" or tostring(r)) or "ERR"
+      if v == "true" then okU = okU + 1 end
+      parts[#parts + 1] = i .. "=" .. v
+    end
+  end
+  local plateTok = "n/a"
+  if C_NamePlate and C_NamePlate.GetNamePlateForUnit then
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, "target")
+    if not ok then plateTok = "ERR " .. tostring(plate)
+    elseif plate == nil then plateTok = "nil"
+    elseif issecret(plate) then plateTok = "SECRET"
+    else
+      local tok = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+      plateTok = issecret(tok) and "token SECRET" or tostring(tok)
+    end
+  end
+  local okM, mark = pcall(GetRaidTargetIndex, "target")
+  local inInst = IsInInstance()
+  log("NPMAP", string.format("%s inst=%s target exists=%s | UnitIsUnit: %s (true:%d) | GetNamePlateForUnit: %s | mark=%s",
+    why, tostring(inInst), tostring(UnitExists("target")), table.concat(parts, " "), okU, plateTok,
+    okM and (issecret(mark) and "SECRET" or tostring(mark)) or "ERR"))
+  if npt.label then
+    local ok = pcall(npt.label.SetText, npt.label, UnitName("target"))
+    if not ok then npt.label:SetText("name: not drawable") end
+  end
+end
+
+local npf = CreateFrame("Frame")
+npf:SetScript("OnEvent", function(_, ev, unit, _, spellID)
+  if not npt.on then return end
+  if ev == "PLAYER_TARGET_CHANGED" then npTest("target-changed")
+  elseif ev == "UNIT_SPELLCAST_SUCCEEDED" and unit == "player" then npTest("cast " .. tostring(spellID)) end
+end)
+npf:SetScript("OnUpdate", function(_, el)
+  if not npt.on or not InCombatLockdown() then return end
+  npt.last = npt.last + el
+  if npt.last >= 2 then npt.last = 0 npTest("tick") end
+end)
+
+local function npCommand(rest)
+  if rest == "off" then
+    npt.on = false
+    npf:UnregisterAllEvents()
+    if npt.lf then npt.lf:Hide() end
+    say("Nameplate test off.")
+    return
+  end
+  npt.on = true
+  npf:RegisterEvent("PLAYER_TARGET_CHANGED")
+  npf:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+  if not npt.lf then
+    local lf = CreateFrame("Frame", nil, UIParent)
+    lf:SetSize(220, 24)
+    lf:SetPoint("CENTER", UIParent, "CENTER", -380, 40)
+    local bg = lf:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.6)
+    npt.label = lf:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    npt.label:SetPoint("CENTER")
+    npt.lf = lf
+  end
+  npt.lf:Show()
+  npTest("on")
+  say("Nameplate test on. Fight a bit, switch targets, then /dp stop and /reload.")
+end
+
 SLASH_DOTPROBE1 = "/dp"
 SLASH_DOTPROBE2 = "/dotprobe"
 SlashCmdList.DOTPROBE = function(msg)
@@ -916,6 +997,8 @@ SlashCmdList.DOTPROBE = function(msg)
     wipe(db.log)
     state.full = false
     say("Log cleared.")
+  elseif cmd == "npmap" then
+    npCommand(rest)
   elseif cmd == "dots" then
     auCommand(rest)
   elseif cmd == "click" then
