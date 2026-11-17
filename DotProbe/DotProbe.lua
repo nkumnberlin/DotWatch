@@ -1,4 +1,4 @@
--- DotProbe 0.2: diagnostic addon for WoW Forever.
+-- DotProbe 0.3: diagnostic addon for WoW Forever.
 -- No gameplay function. It only logs which data addons can read in combat
 -- (or whether it is "secret"), so the real DoT tracker can be built on facts.
 --
@@ -408,11 +408,13 @@ local function reg(ev, unit)
   if not ok then regNotes[#regNotes + 1] = string.format("RegisterEvent %s: ERROR %s", ev, tostring(err)) end
 end
 
+-- 0.3: no COMBAT_LOG_EVENT_UNFILTERED any more. Forever forbids it (BugGrabber ADDON_ACTION_FORBIDDEN),
+-- and run 1 already proved the combat log is closed.
 f:RegisterEvent("ADDON_LOADED")
 for _, ev in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED",
   "PLAYER_FOCUS_CHANGED", "RAID_TARGET_UPDATE", "NAME_PLATE_UNIT_ADDED",
   "NAME_PLATE_UNIT_REMOVED", "UNIT_AURA", "UNIT_COMBAT", "UI_ERROR_MESSAGE",
-  "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN", "COMBAT_LOG_EVENT_UNFILTERED" }) do
+  "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
   reg(ev)
 end
 for _, ev in ipairs({ "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP",
@@ -525,8 +527,121 @@ local HELP = {
   "/dp hide frame     - hide nameplates via frame:SetAlpha(0)",
   "/dp show           - undo both hide variants, restore CVars",
   "/dp land           - landing chat lines on/off; /dp landstats = summary",
+  "/dp click [spell]  - click test: rows per enemy nameplate, left = cast there, right = target",
   "/dp echo | aura | status | clear | help",
 }
+
+
+---------------------------------------------------------------------------
+-- 0.3: click test. Can a click on a list row cast on THAT mob (not the target)?
+-- Secure buttons are fixed to nameplate1..40 (set once, out of combat).
+-- Secure code (state drivers + restricted snippet) shows and sorts them in
+-- combat; our own code only writes the names. Left click = spell, right = target.
+---------------------------------------------------------------------------
+local ck = { built = false, slots = {}, spell = nil }
+local CK_MAX, CK_H = 8, 22
+
+local CK_LAYOUT = [=[
+  local y, n = 0, 0
+  for i = 1, 40 do
+    local b = self:GetFrameRef("s" .. i)
+    if b then
+      if self:GetAttribute("state-np" .. i) == "1" and n < 8 then
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", self, "TOPLEFT", 6, -24 - y)
+        b:Show()
+        y = y + 22
+        n = n + 1
+      else
+        b:Hide()
+      end
+    end
+  end
+  self:SetHeight(30 + math.max(n, 1) * 22)
+]=]
+
+local function ckBuild()
+  local h = CreateFrame("Frame", "DotProbeClickTest", UIParent, "SecureHandlerStateTemplate")
+  h:SetSize(220, 52)
+  h:SetPoint("CENTER", UIParent, "CENTER", -380, 120)
+  h:SetFrameStrata("MEDIUM")
+  local bg = h:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(0, 0, 0, 0.6)
+  h.title = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  h.title:SetPoint("TOPLEFT", 6, -6)
+  for i = 1, 40 do
+    local b = CreateFrame("Button", "DotProbeClickSlot" .. i, h, "SecureActionButtonTemplate")
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    b:SetSize(208, CK_H - 2)
+    b:SetAttribute("type1", "spell")
+    b:SetAttribute("type2", "target")
+    b:SetAttribute("unit", "nameplate" .. i)
+    local t = b:CreateTexture(nil, "BACKGROUND")
+    t:SetAllPoints()
+    t:SetColorTexture(0.35, 0.1, 0.4, 0.7)
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.label:SetPoint("LEFT", 4, 0)
+    b.label:SetPoint("RIGHT", -4, 0)
+    b.label:SetJustifyH("LEFT")
+    b:Hide()
+    b:HookScript("OnClick", function(self, button, down)
+      local u = "nameplate" .. i
+      log("CLICK", string.format("slot %d %s btn=%s down=%s combat=%s name=%s guid=%s target=%s",
+        i, u, tostring(button), tostring(down), tostring(InCombatLockdown()),
+        fmt(UnitName(u)), shortGUID(safeGUID(u)), tostring(UnitIsUnit(u, "target"))))
+    end)
+    h:SetFrameRef("s" .. i, b)
+    h:SetAttribute("_onstate-np" .. i, CK_LAYOUT)
+    RegisterStateDriver(h, "np" .. i, "[@nameplate" .. i .. ",harm,nodead] 1; 0")
+    ck.slots[i] = b
+  end
+  -- our own (insecure) part: names + watching whether secure code moves rows in combat
+  local lastSig, loggedCombatMove = nil, false
+  local acc = 0
+  h:SetScript("OnUpdate", function(self, el)
+    acc = acc + el
+    if acc < 0.2 then return end
+    acc = 0
+    local sig = {}
+    for i, b in ipairs(ck.slots) do
+      if b:IsShown() then
+        local u = "nameplate" .. i
+        local tgt = UnitIsUnit(u, "target") and " |cffff4040<target>|r" or ""
+        b.label:SetText(string.format("np%d  %s%s", i, fmt(UnitName(u)), tgt))
+        sig[#sig + 1] = i .. "@" .. math.floor((b:GetTop() or 0) + 0.5)
+      end
+    end
+    local s = table.concat(sig, " ")
+    if s ~= lastSig then
+      if lastSig and InCombatLockdown() then
+        log("CLICKLAYOUT", "rows changed IN COMBAT: " .. s)
+        if not loggedCombatMove then say("Secure code reordered the rows in combat. Works.") loggedCombatMove = true end
+      end
+      lastSig = s
+    end
+  end)
+  ck.header = h
+  ck.built = true
+end
+
+local function ckCommand(rest)
+  if InCombatLockdown() then say("Only out of combat (secure buttons).") return end
+  if rest == "off" then
+    if ck.header then ck.header:Hide() end
+    say("Click test hidden.")
+    return
+  end
+  local spell = (rest ~= "" and rest) or "Corruption"
+  if not ck.built then ckBuild() end
+  ck.spell = spell
+  for _, b in ipairs(ck.slots) do b:SetAttribute("spell1", spell) end
+  ck.header.title:SetText("DotProbe click test: " .. spell)
+  ck.header:Show()
+  log("CLICK", "test on, spell=" .. spell)
+  say("Click test on. Left click a row = " .. spell .. " on THAT mob, right click = target it. /dp click off hides it.")
+end
 
 SLASH_DOTPROBE1 = "/dp"
 SLASH_DOTPROBE2 = "/dotprobe"
@@ -590,6 +705,8 @@ SlashCmdList.DOTPROBE = function(msg)
     wipe(db.log)
     state.full = false
     say("Log cleared.")
+  elseif cmd == "click" then
+    ckCommand(rest)
   elseif cmd == "status" then
     say(string.format("recording=%s lines=%d/%d echo=%s auras=%s plateHide=%s", tostring(state.recording),
       #db.log, MAX_LINES, tostring(db.echo), tostring(state.auras),
