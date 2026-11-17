@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.13"
+local VERSION = "0.14"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -817,7 +817,16 @@ local function scan()
     for i = #m.flash, 1, -1 do
       if m.flash[i].expires <= t then table.remove(m.flash, i) dirty = true end
     end
-    if next(m.dots) == nil and #m.flash == 0 then removeMob(g, "nothing left") end
+    -- 0.14: an enemy that is still alive stays in the list (HP keeps updating), even
+    -- without DoTs. It goes when it dies, when the fight is over, or when it has been
+    -- out of sight (no target/nameplate) for 10 s.
+    if m.unit then m.lastSeen = t end
+    if next(m.dots) == nil and #m.flash == 0 then
+      local fighting = InCombatLockdown() == true
+      local keep = db.keepAlive ~= false and fighting and not m.offPlate
+        and (m.unit ~= nil or t - (m.lastSeen or m.created) < 10)
+      if not keep then removeMob(g, fighting and "nothing left, out of sight" or "nothing left") end
+    end
   end
 end
 
@@ -1306,7 +1315,8 @@ local function placeHeader(m, tg, x, y, big)
     h:SetText(label)
   end
   h.mob = m
-  if m.guid == tg then h:SetTextColor(1, 0.82, 0) else h:SetTextColor(0.75, 0.75, 0.75) end
+  h.isTarget = (m.guid == tg)
+  if h.isTarget then h:SetTextColor(1, 0.82, 0) else h:SetTextColor(0.75, 0.75, 0.75) end
   h:ClearAllPoints()
   h:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", x, -y)
   h:Show()
@@ -1674,7 +1684,37 @@ local function timeText(fs, d, left)
   end
 end
 
+-- 0.14: does this enemy miss one of our DoTs (a known fixed row that isn't running)?
+-- Classes without fixed rows (crowd control only): when nothing of ours is on it.
+local function missingDots(m)
+  if m.fakeHP == nil and not LOOK.inCombat then return false end
+  if #SLOT_ORDER == 0 then return next(m.dots) == nil end
+  local immune = db.immune[npcID(m.guid) or 0] or {}
+  for _, slot in ipairs(SLOT_ORDER) do
+    local s = slotSpell(slot)
+    if s and not immune[s.name] then
+      local running = false
+      for _, d in pairs(m.dots) do if d.info.slot == slot then running = true break end end
+      if not running then return true end
+    end
+  end
+  return false
+end
+
 local function updateCanvas(canvas, t)
+  -- soft red blink on the name of an enemy that misses DoTs
+  local blink = db.missingBlink ~= false and (0.5 + 0.5 * math.sin(t * 4))
+  for _, h in ipairs(canvas.headers) do
+    if h:IsShown() and h.mob then
+      local r, g, b = 0.75, 0.75, 0.75
+      if h.isTarget then r, g, b = 1, 0.82, 0 end
+      if blink and missingDots(h.mob) then
+        local k = blink * 0.75
+        r, g, b = r + (1 - r) * k, g + (0.25 - g) * k, b + (0.2 - b) * k
+      end
+      h:SetTextColor(r, g, b)
+    end
+  end
   for _, b in ipairs(canvas.bars) do
     local d = b.dot
     if d and b:IsShown() then
@@ -2443,6 +2483,14 @@ local function buildTimersPage(pg)
   y = y - 22
   makeCheck(pg, "Timers for Fear, Banish, Enslave Demon and Death Coil", "Shown like curses, below the DoTs of that enemy.",
     function() return db.trackCC ~= false end, function(v) db.trackCC = v wipe(spellCache) end):SetPoint("TOPLEFT", 26, y)
+  y = y - 36
+
+  makeSection(pg, "Enemies", y)
+  y = y - 22
+  makeCheck(pg, "Keep enemies until they die", "An enemy stays in the list with its health, even when none of your DoTs is on it.",
+    function() return db.keepAlive ~= false end, function(v) db.keepAlive = v dirty = true end):SetPoint("TOPLEFT", 26, y)
+  makeCheck(pg, "Blink red when DoTs are missing", "The enemy's name blinks softly red while one of your DoTs is not on it.",
+    function() return db.missingBlink ~= false end, function(v) db.missingBlink = v end):SetPoint("TOPLEFT", 250, y)
 end
 
 -- page: Statistics (resists per enemy type, fight summary)
