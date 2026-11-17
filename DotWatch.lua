@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.9.1"
+local VERSION = "0.10"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -299,6 +299,7 @@ local function getMob(guid, name)
   local letter = 1
   while used[letter] do letter = letter + 1 end
   m = { guid = guid, name = name or "?", letter = letter, created = now(), dots = {}, flash = {} }
+  if not name and not guid:find("%-%d+%-") then m.hidden = true end -- dungeon: key by nameplate
   mobs[guid] = m
   dirty = true
   return m
@@ -321,9 +322,60 @@ local function addFlash(m, text, r, g, b)
 end
 
 ---------------------------------------------------------------------------
+-- Who is who (0.10). Outside instances: the GUID. In dungeons Forever hides
+-- names and GUIDs from addons, but UnitIsUnit and the nameplate tokens stay
+-- readable (DotProbe npmap test, 2026-11-17). So there an enemy is known by
+-- its nameplate: one key per nameplate, from NAME_PLATE_UNIT_ADDED until
+-- REMOVED. A target without a nameplate gets a key until the target changes.
+---------------------------------------------------------------------------
+local plateKey = {}   -- "nameplateN" -> key
+local keySerial = 0
+local targetKey       -- key of a target that has no nameplate
+local function newKey(prefix)
+  keySerial = keySerial + 1
+  return prefix .. keySerial
+end
+local function plateOf(unit)
+  if unit:sub(1, 9) == "nameplate" then return unit end
+  if C_NamePlate and C_NamePlate.GetNamePlateForUnit then
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if ok and plate and not issecret(plate) then
+      local tok = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+      if type(tok) == "string" and not issecret(tok) then return tok end
+    end
+  end
+  for i = 1, 40 do
+    local u = "nameplate" .. i
+    if plain(UnitIsUnit, unit, u) == true then return u end
+  end
+end
+local function keyOf(unit)
+  if not unit then return nil end
+  local g = guidOf(unit)
+  if g then return g end
+  if plain(UnitExists, unit) ~= true then return nil end
+  local tok = plateOf(unit)
+  if tok then
+    local k = plateKey[tok]
+    if not k then k = newKey("Plate-") plateKey[tok] = k end
+    return k, tok
+  end
+  if unit == "target" then
+    targetKey = targetKey or newKey("Target-")
+    return targetKey
+  end
+end
+
+---------------------------------------------------------------------------
 -- Cast handling
 ---------------------------------------------------------------------------
 local function resolveDest(destName)
+  if issecret(destName) then
+    -- dungeon: the target's name is hidden; the cast went to the target (or a macro target we can't see)
+    local k = keyOf("target")
+    if k and plain(UnitIsDead, "target") ~= true then return k, "target (hidden name)" end
+    return nil, "hidden target name and no target"
+  end
   destName = str(destName)
   if not destName or destName == "" then return nil, "no readable target name" end
   for _, u in ipairs({ "target", "mouseover", "focus" }) do
@@ -359,7 +411,7 @@ local function failDot(m, d, action)
   end
   dbg("FAIL " .. d.info.name .. " on " .. m.name .. " [" .. short(m.guid) .. "]: " .. action ..
     (d.prev and " (old timer kept)" or ""))
-  if db.chat then say(string.format("|cffff5555%s %s|r on %s", d.info.name, label:lower(), m.name)) end
+  if db.chat then say(string.format("|cffff5555%s %s|r on %s", d.info.name, label:lower(), m.hidden and "your target" or m.name)) end
   if action == "IMMUNE" then
     local npc = npcID(m.guid)
     if npc then
@@ -449,7 +501,7 @@ local function onSucceeded(castGUID, spellID)
   C_Timer.After(0.15, function()
     if orphans[castGUID] ~= o then return end
     orphans[castGUID] = nil
-    local g = guidOf("target")
+    local g = keyOf("target")
     local hostile = plain(UnitCanAttack, "player", "target")
     if g and hostile ~= false and plain(UnitIsDead, "target") ~= true then
       startDot(info, g, nameOf("target"), o.t, "(no SENT, used target)")
@@ -463,7 +515,7 @@ local function onUnitCombat(unit, action, _, _, school)
   action = str(action)
   if not action then return end
   if action == "WOUND" then
-    local g = guidOf(unit)
+    local g = keyOf(unit)
     local m = g and mobs[g]
     school = num(school)
     if m and school then
@@ -473,7 +525,7 @@ local function onUnitCombat(unit, action, _, _, school)
     return
   end
   if not FAIL[action] then return end
-  local guid = guidOf(unit)
+  local guid = keyOf(unit)
   if not guid then return end
   local t = now()
   local f = lastFail[guid]
@@ -483,7 +535,7 @@ local function onUnitCombat(unit, action, _, _, school)
 end
 
 local function onUnitAura(unit, info)
-  local guid = guidOf(unit)
+  local guid = keyOf(unit)
   if not guid then return end
   local m = mobs[guid]
   if type(info) == "table" and not issecret(info) then
@@ -538,7 +590,7 @@ local function syncOutOfCombat()
   if InCombatLockdown() or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
   local seen = {}
   for _, u in ipairs(TOKENS) do
-    local g = guidOf(u)
+    local g = keyOf(u)
     local m = g and mobs[g]
     if m and not seen[g] then
       seen[g] = true
@@ -575,10 +627,14 @@ local function scan()
   if next(mobs) == nil then return end
   for _, m in pairs(mobs) do m.unit = nil end
   for _, u in ipairs(TOKENS) do
-    local g = guidOf(u)
+    local g = keyOf(u)
     local m = g and mobs[g]
     if m then
       if not m.unit then m.unit = u end -- token used for the HP display (target first)
+      if m.hidden then -- a hidden (secret) name can still be drawn
+        if not m.shownName then dirty = true end
+        m.shownName = UnitName(u)
+      end
       if plain(UnitIsDead, u) == true then
         removeMob(g, "dead")
       else
@@ -879,7 +935,7 @@ end
 local function sortedMobs()
   local list = {}
   for _, m in pairs(mobs) do list[#list + 1] = m end
-  local tg = guidOf("target")
+  local tg = keyOf("target")
   -- stable order: first dotted stays on top; the target is only highlighted, never moved
   table.sort(list, function(a, b)
     if a.created ~= b.created then return a.created < b.created end
@@ -981,13 +1037,13 @@ local function layoutPlates(sameNameCount, LETTERS)
   local n = 0
   for i = 1, 40 do
     local u = "nameplate" .. i
-    local g = guidOf(u)
+    local g = keyOf(u)
     local m = g and mobs[g]
     if m then
       local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, u)
       if ok and plate and not issecret(plate) then
         local dots = db.plateDots and plateDots(m) or {}
-        local showLetter = sameNameCount(m.name) > 1
+        local showLetter = sameNameCount(m.name) > 1 and not m.hidden
         if #dots > 0 or showLetter then
           n = n + 1
           local o = getOverlay(n)
@@ -1059,16 +1115,25 @@ local function placeHeader(m, tg, x, y, big)
   h:SetFontObject(font)
   h.hp:SetFontObject(font)
   local label = m.name
-  if sameNameCount(m.name, curList) > 1 then label = label .. " " .. LETTERS:sub(m.letter, m.letter) end
+  if sameNameCount(m.name, curList) > 1 and not m.hidden then label = label .. " " .. LETTERS:sub(m.letter, m.letter) end
   if m.mark then label = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_" .. m.mark .. ":0|t " .. label end
-  h:SetText(label)
+  if m.hidden then
+    -- dungeon: the game draws the hidden name for us (like the HP %)
+    if not (m.shownName and pcall(h.SetText, h, m.shownName)) then h:SetText("Enemy " .. LETTERS:sub(m.letter, m.letter)) end
+  else
+    h:SetText(label)
+  end
   h.mob = m
   if m.guid == tg then h:SetTextColor(1, 0.82, 0) else h:SetTextColor(0.75, 0.75, 0.75) end
   h:ClearAllPoints()
   h:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", x, -y)
   h:Show()
   h.hp:ClearAllPoints()
-  h.hp:SetPoint("LEFT", h, "LEFT", (h:GetStringWidth() or 0) + 5, 0)
+  if m.hidden then
+    h.hp:SetPoint("LEFT", h, "RIGHT", 5, 0) -- width of a hidden name can't be read
+  else
+    h.hp:SetPoint("LEFT", h, "LEFT", (h:GetStringWidth() or 0) + 5, 0)
+  end
   h.hp:Show()
   if m.fakeHP then
     h.hp:SetFormattedText("%d%%", m.fakeHP)
@@ -1473,7 +1538,7 @@ end
 -- refresh warning sound: once per DoT when it drops under the warning time
 local function checkWarnings(t)
   if db.warn == false or not db.warnSound then return end
-  local tg = guidOf("target")
+  local tg = keyOf("target")
   for g, m in pairs(mobs) do
     for _, d in pairs(m.dots) do
       local left = d.expires - t
@@ -1686,7 +1751,26 @@ ev:SetScript("OnEvent", function(_, event, ...)
     onUnitCombat(...)
   elseif event == "UNIT_AURA" then
     onUnitAura(...)
-  elseif event == "PLAYER_TARGET_CHANGED" or event == "NAME_PLATE_UNIT_ADDED" or event == "NAME_PLATE_UNIT_REMOVED" then
+  elseif event == "PLAYER_TARGET_CHANGED" then
+    targetKey = nil
+    dirty = true
+  elseif event == "NAME_PLATE_UNIT_ADDED" then
+    local u = ...
+    if type(u) == "string" and not issecret(u) then plateKey[u] = nil end -- a new enemy on this token
+    dirty = true
+  elseif event == "NAME_PLATE_UNIT_REMOVED" then
+    local u = ...
+    if type(u) == "string" and not issecret(u) then
+      local k = plateKey[u]
+      plateKey[u] = nil
+      if k and mobs[k] then
+        if plain(UnitIsDead, u) == true then
+          removeMob(k, "dead (nameplate gone)")
+        else
+          mobs[k].offPlate = true -- out of sight: keep its timers, it can't be recognized again
+        end
+      end
+    end
     dirty = true
   elseif event == "PLAYER_REGEN_DISABLED" then
     LOOK.inCombat = true
