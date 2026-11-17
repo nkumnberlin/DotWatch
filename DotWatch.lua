@@ -18,6 +18,9 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.14.1: bug fixes from the code review (Table: own column per curse/control
+-- spell; no red blink / "lost?" / stored immunities on banished enemies; options window
+-- opaque; plate letter left of the health bar; see the changelog in the project doc).
 -- New in 0.9: target bar removed (Forever only lets a click reach the current target).
 -- New in 0.9.1: no StaticPopup / UISpecialFrames (they tainted Escape -> SpellStopCasting forbidden).
 -- New in 0.8: refresh warning, tick marks, "DoT lost?", control timers, target bar like an
@@ -34,7 +37,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.14"
+local VERSION = "0.14.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -104,9 +107,12 @@ local SPELLS = {
   { name = "Curse of Shadow",       dur = 300, color = { 0.50, 0.30, 0.70 }, group = "curse" },
   { name = "Curse of Exhaustion",   dur = 12,  color = { 0.40, 0.70, 0.70 }, group = "curse" },
   -- crowd control: shown while active, like curses (option "Control timers")
-  { name = "Fear",                  dur = 20,  color = { 0.75, 0.35, 0.95 }, cc = true },
-  { name = "Banish",                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true },
-  { name = "Enslave Demon",         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true },
+  -- calm   = you leave this enemy alone on purpose (breaks on damage, or it's yours now):
+  --          no red "DoTs missing" blink while it runs
+  -- invuln = the enemy can't be hurt while it runs (no "lost?", no stored immunities)
+  { name = "Fear",                  dur = 20,  color = { 1.00, 0.40, 0.70 }, cc = true },
+  { name = "Banish",                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true, calm = true, invuln = true },
+  { name = "Enslave Demon",         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true, calm = true },
   { name = "Death Coil",            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
 
   -- 0.13: the other classes (WoW Forever data, see project doc class-dots-cc.md).
@@ -115,7 +121,7 @@ local SPELLS = {
   { class = "PRIEST", name = "Shadow Word: Pain",   dur = 18, color = { 0.60, 0.25, 0.85 }, slot = "swp", tick = 3, school = 32 },
   { class = "PRIEST", name = "Devouring Plague",    dur = 24, color = { 0.35, 0.80, 0.30 }, slot = "plague", tick = 3, school = 32 },
   { class = "PRIEST", name = "Holy Fire",           dur = 10, color = { 1.00, 0.75, 0.25 }, slot = "holyfire", tick = 2, school = 2 },
-  { class = "PRIEST", name = "Shackle Undead",      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true },
+  { class = "PRIEST", name = "Shackle Undead",      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true, calm = true },
   { class = "PRIEST", name = "Chastise",            dur = 2,  color = { 1.00, 0.90, 0.55 }, cc = true },
   { class = "PRIEST", name = "Silence",             dur = 5,  color = { 0.55, 0.45, 0.80 }, cc = true },
   -- Druid
@@ -124,7 +130,7 @@ local SPELLS = {
   { class = "DRUID", name = "Rake",                 dur = 9,  color = { 0.90, 0.30, 0.25 }, slot = "rake", tick = 3, school = 1 },
   { class = "DRUID", name = "Lacerate",             dur = 15, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
   { class = "DRUID", name = "Entangling Roots",     dur = 27, color = { 0.35, 0.70, 0.30 }, cc = true, tick = 3, school = 8 },
-  { class = "DRUID", name = "Hibernate",            dur = 40, color = { 0.45, 0.75, 0.55 }, cc = true },
+  { class = "DRUID", name = "Hibernate",            dur = 40, color = { 0.45, 0.75, 0.55 }, cc = true, calm = true },
   { class = "DRUID", name = "Bash",                 dur = 4,  color = { 0.80, 0.55, 0.35 }, cc = true },
   { class = "DRUID", name = "Pounce",               dur = 2,  color = { 0.90, 0.70, 0.30 }, cc = true },
   { class = "DRUID", name = "Feral Charge",         dur = 4,  color = { 0.70, 0.50, 0.30 }, cc = true },
@@ -134,14 +140,14 @@ local SPELLS = {
   { class = "HUNTER", name = "Lacerate",            dur = 21, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
   { class = "HUNTER", name = "Immolation Trap",     dur = 15, color = { 1.00, 0.45, 0.10 }, trap = "fire", tick = 3, school = 4 },
   { class = "HUNTER", name = "Explosive Trap",      dur = 20, color = { 1.00, 0.30, 0.15 }, trap = "fire", aoe = true, tick = 2, school = 4 },
-  { class = "HUNTER", name = "Freezing Trap",       dur = 20, color = { 0.55, 0.80, 1.00 }, trap = "aura", cc = true },
+  { class = "HUNTER", name = "Freezing Trap",       dur = 20, color = { 0.55, 0.80, 1.00 }, trap = "aura", cc = true, calm = true },
   { class = "HUNTER", name = "Scare Beast",         dur = 20, color = { 0.75, 0.55, 0.30 }, cc = true },
   { class = "HUNTER", name = "Scatter Shot",        dur = 4,  color = { 0.85, 0.75, 0.40 }, cc = true },
   { class = "HUNTER", name = "Counterattack",       dur = 5,  color = { 0.70, 0.60, 0.45 }, cc = true },
   -- Rogue
   { class = "ROGUE", name = "Garrote",              dur = 18, color = { 0.85, 0.20, 0.20 }, slot = "garrote", tick = 3, school = 1 },
-  { class = "ROGUE", name = "Sap",                  dur = 45, color = { 0.65, 0.65, 0.75 }, cc = true },
-  { class = "ROGUE", name = "Blind",                dur = 10, color = { 0.75, 0.75, 0.55 }, cc = true },
+  { class = "ROGUE", name = "Sap",                  dur = 45, color = { 0.65, 0.65, 0.75 }, cc = true, calm = true },
+  { class = "ROGUE", name = "Blind",                dur = 10, color = { 0.75, 0.75, 0.55 }, cc = true, calm = true },
   { class = "ROGUE", name = "Gouge",                dur = 4,  color = { 0.85, 0.55, 0.35 }, cc = true },
   { class = "ROGUE", name = "Cheap Shot",           dur = 4,  color = { 0.90, 0.80, 0.30 }, cc = true },
   -- Shaman
@@ -150,11 +156,11 @@ local SPELLS = {
   { class = "MAGE", name = "Fireball",              dur = 8,  color = { 1.00, 0.50, 0.10 }, tick = 2, school = 4 },
   { class = "MAGE", name = "Pyroblast",             dur = 12, color = { 1.00, 0.30, 0.10 }, tick = 3, school = 4 },
   { class = "MAGE", name = "Frostfire Bolt",        dur = 9,  color = { 0.55, 0.55, 1.00 } },
-  { class = "MAGE", name = "Polymorph",             dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true },
-  { class = "MAGE", name = "Polymorph: Cow",        dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true },
+  { class = "MAGE", name = "Polymorph",             dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true, calm = true },
+  { class = "MAGE", name = "Polymorph: Cow",        dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true, calm = true },
   -- Paladin
   { class = "PALADIN", name = "Hammer of Justice",  dur = 6,  color = { 1.00, 0.85, 0.35 }, cc = true },
-  { class = "PALADIN", name = "Repentance",         dur = 6,  color = { 0.95, 0.95, 0.75 }, cc = true },
+  { class = "PALADIN", name = "Repentance",         dur = 6,  color = { 0.95, 0.95, 0.75 }, cc = true, calm = true },
   { class = "PALADIN", name = "Turn Undead",        dur = 20, color = { 1.00, 0.95, 0.60 }, cc = true },
   -- Warrior
   { class = "WARRIOR", name = "Rend",               dur = 21, color = { 0.85, 0.15, 0.15 }, slot = "rend", tick = 3, school = 1 },
@@ -253,7 +259,8 @@ local function spellInfo(id)
 end
 
 local function durationOf(info)
-  return (db.learned and db.learned[info.id]) or info.descDur or info.def.dur
+  -- control spells: never a learned value (0.14.1, older versions stored DR-shortened ones)
+  return (not info.def.cc and db.learned and db.learned[info.id]) or info.descDur or info.def.dur
 end
 
 ---------------------------------------------------------------------------
@@ -393,7 +400,7 @@ local function getMob(guid, name)
   if m then return m end
   local used = {}
   for _, o in pairs(mobs) do
-    if o.name == name then used[o.letter] = true end
+    if o.name == (name or "?") then used[o.letter] = true end -- hidden enemies are all "?"
   end
   local letter = 1
   while used[letter] do letter = letter + 1 end
@@ -418,6 +425,16 @@ end
 local function addFlash(m, text, r, g, b)
   m.flash[#m.flash + 1] = { text = text, r = r, g = g, b = b, expires = now() + 2.5 }
   dirty = true
+end
+
+-- 0.14.1: is one of our "calm" / "invuln" control spells running on this enemy?
+-- (Banish: can't be hurt; Polymorph, Sap ...: left alone on purpose.) `except` is skipped.
+local function ccActive(m, flag, except)
+  local t = now()
+  for _, d in pairs(m.dots) do
+    if d ~= except and d.info.def[flag] and d.expires > t then return d end
+  end
+  if except and except.prev and except.prev.info.def[flag] and except.prev.expires > t then return except.prev end
 end
 
 ---------------------------------------------------------------------------
@@ -494,14 +511,20 @@ local function resolveDest(destName)
 end
 
 local function failDot(m, d, action)
+  -- 0.14.1: a banished enemy is immune to everything for a while. That is not an
+  -- immunity of this enemy type: don't store it and don't count it in the statistics.
+  local banished = action == "IMMUNE" and ccActive(m, "invuln", d)
   local id = d.info.id
   if m.dots[id] == d then
     m.dots[id] = d.prev -- failed refresh: the old DoT keeps running
     if d.prevGroup then m.dots[d.prevGroup.info.id] = d.prevGroup end
   end
   local label = FAIL[action] or action
+  if banished then label = label .. " (" .. banished.info.name .. ")" end
   addFlash(m, d.info.name .. ": " .. label, 1, 0.3, 0.3)
-  if action == "IMMUNE" then
+  if banished then
+    -- nothing recorded
+  elseif action == "IMMUNE" then
     fight.immune = fight.immune + 1
     stat(m.guid, m.name, d.info.name, "i")
   else
@@ -509,9 +532,9 @@ local function failDot(m, d, action)
     stat(m.guid, m.name, d.info.name, "r")
   end
   dbg("FAIL " .. d.info.name .. " on " .. m.name .. " [" .. short(m.guid) .. "]: " .. action ..
-    (d.prev and " (old timer kept)" or ""))
+    (banished and " (banished, not stored)" or "") .. (d.prev and " (old timer kept)" or ""))
   if db.chat then say(string.format("|cffff5555%s %s|r on %s", d.info.name, label:lower(), m.hidden and "your target" or m.name)) end
-  if action == "IMMUNE" then
+  if action == "IMMUNE" and not banished then
     local npc = npcID(m.guid)
     if npc then
       db.immune[npc] = db.immune[npc] or {}
@@ -693,16 +716,20 @@ local function onUnitAura(unit, info)
   end
   -- out of combat the real aura data is readable: learn exact durations
   if InCombatLockdown() or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
+  if plain(UnitCanAttack, "player", unit) == false then return end -- party, pets, yourself
   for i = 1, 40 do
     local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HARMFUL|PLAYER")
     if not ok or issecret(a) or not a then break end
     local id, dur, exp = num(a.spellId), num(a.duration), num(a.expirationTime)
-    if id and not spellInfo(id) and not db.untracked[id] then
+    local info = id and spellInfo(id)
+    if id and not info and not DEF_BY_NAME[str(a.name) or ""] and not db.untracked[id] then
       db.untracked[id] = { name = str(a.name) or "?", dur = dur }
       dbg("UNTRACKED own debuff " .. tostring(str(a.name)) .. " (" .. id .. ") " .. tostring(dur) .. "s")
     end
-    if id and dur and dur > 0 and spellInfo(id) then
-      if db.learned[id] ~= dur then
+    if info and dur and dur > 0 then
+      -- 0.14.1: crowd control isn't learned: diminishing returns and PvP caps
+      -- shorten single casts, and that short value would stick for every later cast
+      if not info.def.cc and db.learned[id] ~= dur then
         db.learned[id] = dur
         dbg("LEARNED " .. spellInfo(id).name .. " = " .. dur .. "s")
       end
@@ -789,12 +816,16 @@ local function scan()
   for g, m in pairs(mobs) do
     -- "DoT lost?": its school's ticks stopped although the enemy is in view
     if m.unit then m.tokenSince = m.tokenSince or t else m.tokenSince = nil end
-    if db.lostCheck ~= false then
+    -- 0.14.1: a banished enemy takes no ticks. No "lost?" while Banish runs, and the
+    -- clock starts again when it ends.
+    local shielded = ccActive(m, "invuln")
+    if shielded then m.shieldedAt = t end
+    if db.lostCheck ~= false and not shielded then
       for _, d in pairs(m.dots) do
         local iv, sch = d.info.def.tick, d.info.def.school
         if iv and sch then
           local last = m.lastTick and m.lastTick[sch] or 0
-          local ref = math.max(d.start, m.tokenSince or math.huge, last)
+          local ref = math.max(d.start, m.tokenSince or math.huge, last, m.shieldedAt or 0)
           if not d.lost and m.tokenSince and t - ref > iv * 1.5 + 1 and t - d.start > iv + 1 then
             d.lost, d.lostAt = true, t
             fight.lost = fight.lost + 1
@@ -862,13 +893,17 @@ function LOOK.color(info)
   local c = db and db.colors and db.colors[info.name]
   return c or info.color
 end
+-- light bar colors get dark text (perceived brightness)
+function LOOK.isLight(c)
+  return (0.299 * c[1] + 0.587 * c[2] + 0.114 * c[3]) > 0.6
+end
 -- 0.55..1 pulse while a DoT is about to run out (refresh warning)
 function LOOK.pulse(d, left, t)
   if d.lost or not db or db.warn == false then return 1 end
   if left > 0 and left <= (db.warnTime or 3) then return 0.55 + 0.45 * math.abs(math.sin(t * 6)) end
   return 1
 end
-local LETTERS = "ABCDEFGHIJ"
+local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 local frame = CreateFrame("Frame", "DotWatchFrame", UIParent)
 frame:SetSize(WIDTH, ROW_H)
@@ -1021,9 +1056,13 @@ local function getBar(cv, i)
   b.icon:SetSize(ROW_H - 2, ROW_H - 2)
   b.icon:SetPoint("RIGHT", b, "LEFT", -2, 0)
   b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  b.label:SetPoint("LEFT", 3, 0)
   b.time = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   b.time:SetPoint("RIGHT", -3, 0)
+  -- long names stop before the seconds instead of running into them
+  b.label:SetPoint("LEFT", 3, 0)
+  b.label:SetPoint("RIGHT", b.time, "LEFT", -4, 0)
+  b.label:SetJustifyH("LEFT")
+  b.label:SetWordWrap(false)
   cv.bars[i] = b
   return b
 end
@@ -1158,7 +1197,8 @@ local function rowsFor(m, forcePlaceholders)
     if not d.info.slot then extra[#extra + 1] = d end
   end
   table.sort(extra, function(a, b) return a.start < b.start end)
-  for _, d in ipairs(extra) do rows[#rows + 1] = { dot = d, slot = "curse" } end
+  -- 0.14.1: every curse / control spell has its own key (Table style: own column)
+  for _, d in ipairs(extra) do rows[#rows + 1] = { dot = d, slot = "x:" .. d.info.name } end
   return rows
 end
 
@@ -1244,13 +1284,28 @@ local function layoutPlates(sameNameCount, LETTERS)
             if showLetter then
               o.letter:SetText(LETTERS:sub(m.letter, m.letter))
               o.letter:ClearAllPoints()
-              if #dots == 0 then
+              -- 0.14.1: above the plate the letter sat in the damage-number zone and
+              -- vanished behind them. Default now: left of the health bar.
+              local besideOk = false
+              if db.plateSide ~= "above" then
+                local _, bar = pcall(function() -- read only, never written
+                  local uf = plate.UnitFrame
+                  return uf and (uf.healthBar or uf.HealthBar or (uf.HealthBarsContainer and uf.HealthBarsContainer.healthBar))
+                end)
+                if type(bar) ~= "table" then bar = nil end
+                besideOk = pcall(o.letter.SetPoint, o.letter, "RIGHT", bar or plate, "LEFT", -3, 0)
+                if not besideOk then o.letter:ClearAllPoints() end
+              end
+              if besideOk then
+                -- the icons (if any) stay above the plate, the letter sits beside it
+              elseif #dots == 0 then
                 o.letter:SetPoint("CENTER", o, "CENTER", 0, 0)
+                x = 16
               else
                 o.letter:SetPoint("LEFT", o, "LEFT", 0, 0)
+                x = 16
               end
               o.letter:Show()
-              x = 16
             else
               o.letter:Hide()
             end
@@ -1325,7 +1380,9 @@ local function placeHeader(m, tg, x, y, big)
   -- name, the game keeps its width secret, and reading it broke the whole window.
   h.hp:SetPoint("LEFT", h, "RIGHT", 5, 0)
   h.hp:Show()
-  if m.fakeHP then
+  if m.fakeHP and db.showHP == false then
+    h.hp:SetText("") -- 0.14.1: the preview follows the "Health %" option too
+  elseif m.fakeHP then
     h.hp:SetFormattedText("%d%%", m.fakeHP)
     local p = m.fakeHP / 100
     if p >= 0.5 then h.hp:SetTextColor((1 - p) * 2, 1, 0.15) else h.hp:SetTextColor(1, p * 2, 0.15) end
@@ -1395,13 +1452,19 @@ render.bars = function(list, tg, W)
         b.icon:SetAlpha(1)
         b.bg:SetColorTexture(0, 0, 0, 0.5)
         b.label:SetText(r.dot.info.name)
-        b.label:SetTextColor(1, 1, 1)
         local c = LOOK.color(r.dot.info)
         if r.dot.lost then
           b:SetStatusBarColor(0.4, 0.4, 0.4)
           b.icon:SetDesaturated(true)
         else
           b:SetStatusBarColor(c[1], c[2], c[3])
+        end
+        -- 0.14.1: white text was hard to read on light bars (yellow Bane of Agony):
+        -- a black outline there (dark text would vanish once the bar has run down)
+        b.label:SetTextColor(1, 1, 1)
+        if not r.dot.lost and LOOK.isLight(c) then
+          local fp, fsz = b.label:GetFont()
+          if fp then b.label:SetFont(fp, fsz, "OUTLINE") end
         end
       else
         b.dot = nil
@@ -1510,13 +1573,31 @@ render.table = function(list, tg, W)
     end
     if s or active then cols[#cols + 1] = { slot = slot, icon = active and active.info.icon or iconOf(id) } end
   end
-  local curseIcon
+  -- 0.14.1: one column per running curse / control spell (before: one shared column,
+  -- so Fear and Banish showed under the same icon and a curse hid a Fear on the same enemy)
+  local extra, seen = {}, {}
   for _, m in ipairs(list) do
-    for _, d in pairs(m.dots) do if not d.info.slot then curseIcon = d.info.icon end end
+    for _, d in pairs(m.dots) do
+      if not d.info.slot then
+        local e = seen[d.info.name]
+        if not e then
+          e = { slot = "x:" .. d.info.name, icon = d.info.icon, first = d.start }
+          seen[d.info.name] = e
+          extra[#extra + 1] = e
+        elseif d.start < e.first then
+          e.first = d.start
+        end
+      end
+    end
   end
-  if curseIcon then cols[#cols + 1] = { slot = "curse", icon = curseIcon } end
+  table.sort(extra, function(a, b)
+    if a.first ~= b.first then return a.first < b.first end
+    return a.slot < b.slot
+  end)
+  for _, e in ipairs(extra) do cols[#cols + 1] = e end
 
   local colW = 40
+  W = math.max(W, 110 + #cols * colW) -- keep room for the names
   local nameW = W - #cols * colW
   -- header row: spell icons
   for i, col in ipairs(cols) do
@@ -1556,7 +1637,7 @@ render.table = function(list, tg, W)
     end
     y = y + math.max(22, hh + fy + 6)
   end
-  return y
+  return y, W
 end
 
 render.focus = function(list, tg, W)
@@ -1688,6 +1769,8 @@ end
 -- Classes without fixed rows (crowd control only): when nothing of ours is on it.
 local function missingDots(m)
   if m.fakeHP == nil and not LOOK.inCombat then return false end
+  -- 0.14.1: banished, polymorphed, sapped, enslaved ...: left alone on purpose (Fear still blinks)
+  if ccActive(m, "calm") then return false end
   if #SLOT_ORDER == 0 then return next(m.dots) == nil end
   local immune = db.immune[npcID(m.guid) or 0] or {}
   for _, slot in ipairs(SLOT_ORDER) do
@@ -1947,8 +2030,11 @@ for _, e in ipairs({ "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SP
   pcall(ev.RegisterUnitEvent, ev, e, "player")
 end
 
-local bookTimer
+local bookTimer, bookAfterCombat
 local function scheduleBookScan(why)
+  -- 0.14.1: not in combat (SPELLS_CHANGED fires there, e.g. for pet spells). Spell data
+  -- can be secret in combat, and a scan that sees nothing would drop every placeholder.
+  if InCombatLockdown() then bookAfterCombat = why return end
   if bookTimer then return end
   bookTimer = true
   C_Timer.After(0.5, function()
@@ -2030,6 +2116,11 @@ ev:SetScript("OnEvent", function(_, event, ...)
     -- don't wipe: the out-of-combat sync checks the real debuffs instead
     if next(mobs) then dbg("COMBAT END: timers kept, checking real debuffs") end
     wipe(pending)
+    if bookAfterCombat then
+      local why = bookAfterCombat
+      bookAfterCombat = nil
+      C_Timer.After(0.5, function() scheduleBookScan(why .. ", after combat") end)
+    end
     if db.summary and fight.casts > 0 then
       local secs = math.floor(now() - fight.start + 0.5)
       say(string.format("Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s",
@@ -2377,9 +2468,12 @@ local function buildLookPage(pg, COL)
     btn.edge:SetPoint("BOTTOMRIGHT", btn.sw, 1, -1)
     btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     btn.text:SetPoint("LEFT", btn.sw, "RIGHT", 4, 0)
-    btn.text:SetWidth(80)
+    -- 0.14.1: one line only ("C. of Recklessness" wrapped and touched the next row);
+    -- the full name is in the tooltip
+    btn.text:SetWidth(82)
     btn.text:SetJustifyH("LEFT")
-    btn.text:SetText((sp.name:gsub("^Curse of ", "C. of "):gsub("^Bane of ", "B. of ")))
+    btn.text:SetWordWrap(false)
+    btn.text:SetText((sp.name:gsub("^Curse of the ", "C. "):gsub("^Curse of ", "C. "):gsub("^Bane of ", "B. ")))
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     btn.sp = sp
     btn:SetScript("OnClick", function(self)
@@ -2481,7 +2575,7 @@ local function buildTimersPage(pg)
 
   makeSection(pg, "Control", y)
   y = y - 22
-  makeCheck(pg, "Timers for Fear, Banish, Enslave Demon and Death Coil", "Shown like curses, below the DoTs of that enemy.",
+  makeCheck(pg, "Crowd-control timers (Fear, Banish, Polymorph, Sap ...)", "Shown while active, below the DoTs of that enemy.",
     function() return db.trackCC ~= false end, function(v) db.trackCC = v wipe(spellCache) end):SetPoint("TOPLEFT", 26, y)
   y = y - 36
 
@@ -2591,15 +2685,21 @@ local function buildOptions()
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  -- 0.14.1: the dark marble is see-through on its own (unit frames showed through),
+  -- so a solid base goes under it. The backdrop only draws the gold border.
+  local base = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+  base:SetColorTexture(0.04, 0.03, 0.02, 1)
+  base:SetPoint("TOPLEFT", 11, -12)
+  base:SetPoint("BOTTOMRIGHT", -12, 11)
+  local marble = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+  marble:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark", "REPEAT", "REPEAT")
+  pcall(marble.SetHorizTile, marble, true)
+  pcall(marble.SetVertTile, marble, true)
+  marble:SetPoint("TOPLEFT", 11, -12)
+  marble:SetPoint("BOTTOMRIGHT", -12, 11)
   if f.SetBackdrop then
-    f:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-      edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 32,
+    f:SetBackdrop({ edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 32,
       insets = { left = 11, right = 12, top = 12, bottom = 11 } })
-  else
-    local bg = f:CreateTexture(nil, "BACKGROUND")
-    bg:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark")
-    bg:SetPoint("TOPLEFT", 11, -12)
-    bg:SetPoint("BOTTOMRIGHT", -12, 11)
   end
   -- Escape closes it. 0.9.1: no longer via UISpecialFrames (an addon entry there is
   -- tainted data that Blizzard's Escape code reads). The window catches Escape itself;
@@ -2614,7 +2714,16 @@ local function buildOptions()
     end
   end)
   f:RegisterEvent("PLAYER_REGEN_DISABLED")
-  f:SetScript("OnEvent", function(self) self:EnableKeyboard(false) end)
+  f:RegisterEvent("PLAYER_REGEN_ENABLED")
+  f:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+      self:EnableKeyboard(false)
+    elseif self:IsShown() then
+      -- 0.14.1: Escape works again after the fight (before: only after reopening)
+      self:EnableKeyboard(true)
+      self:SetPropagateKeyboardInput(true)
+    end
+  end)
 
   local header = f:CreateTexture(nil, "ARTWORK")
   header:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Header")
@@ -2678,6 +2787,10 @@ local function buildOptions()
   y = y - 44
   makeSlider(g, "Height above the plate", -20, 40, 1, "%d px",
     function() return db.plateY or 4 end, function(v) db.plateY = v end):SetPoint("TOPLEFT", 30, y)
+  radioRow(g, "Letter", 300, y + 2, {
+    { "left", "Left", "Left of the health bar, away from the damage numbers." },
+    { "above", "Above", "Above the plate, like before 0.14.1 (can hide behind damage numbers)." },
+  }, function() return db.plateSide or "left" end, function(v) db.plateSide = v end)
   y = y - 40
 
   makeSection(g, "Messages", y)
@@ -2758,11 +2871,15 @@ local function buildOptions()
   pv.redraw = function()
     pv.list, pv.tg = buildSample()
     local h, w = drawCanvas(pv.canvas, pv.list, pv.tg, db.style)
-    -- shrink the sample to fit the box
+    -- fit the sample into the box: shrink when too big, grow a little when small, and
+    -- center it (0.14.1: Table and Target big only used the top of the box)
     local availW, availH = (box:GetWidth() or 240) - 24, (box:GetHeight() or 320) - 24
-    local scale = math.min(1, availW / math.max(w, 1), availH / math.max(h, 1))
-    holder:SetScale(scale > 0 and scale or 1)
-    holder:SetSize(w, h)
+    local scale = math.min(1.35, availW / math.max(w, 1), availH / math.max(h, 1))
+    if not (scale > 0) then scale = 1 end
+    holder:SetScale(scale)
+    holder:SetSize(math.max(w, 1), math.max(h, 1))
+    holder:ClearAllPoints()
+    holder:SetPoint("CENTER", box, "CENTER", 0, 0)
   end
   pv.tick = function(t)
     for _, m in ipairs(pv.list or {}) do
@@ -3011,6 +3128,7 @@ initSettings = function()
   db.texture = db.texture or "classic"
   db.grow = db.grow or "middle"
   db.ooc = db.ooc or "show"
+  db.plateSide = db.plateSide or "left"
   LOOK.inCombat = UnitAffectingCombat and plain(UnitAffectingCombat, "player") == true or false
   applySettings()
 end
