@@ -52,3 +52,7 @@ Then start the game or type `/reload`.
 ## DotProbe
 
 `DotProbe` is the diagnostic addon used to find out what Forever lets addons read in combat. It has no gameplay function: it only writes a log to SavedVariables (`/dp help`). You only need it for development.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
