@@ -29,7 +29,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.7.2"
+local VERSION = "0.7.3"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -915,6 +915,12 @@ end
 local STYLES = { "bars", "slim", "icons", "table", "focus" }
 local STYLE_NAMES = { bars = "Bars", slim = "Slim bars", icons = "Icons with timers",
   table = "Table", focus = "Target big, others small" }
+local SIZES = {
+  { 0.8, "Small", "A compact list that takes little room." },
+  { 1.0, "Medium", "The normal size." },
+  { 1.2, "Large", "Easier to read from a distance." },
+  { 1.4, "Extra large", "For high resolutions or big screens." },
+}
 local STYLE_WIDTH = { bars = 220, slim = 200, icons = 180, table = 240, focus = 210 }
 
 local n, cv, curList -- per-layout counters, canvas, enemy list
@@ -1826,15 +1832,20 @@ local function makeSlider(parent, label, minV, maxV, step, fmt, get, set)
   return s
 end
 
-local function makeSection(parent, label, y)
+-- section heading with a thin gold line; x/lineEnd let a page have two columns
+local function makeSection(parent, label, y, x, lineEnd)
   local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  fs:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y)
+  fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x or 24, y)
   fs:SetText(label)
   local line = parent:CreateTexture(nil, "ARTWORK")
   line:SetColorTexture(1, 0.82, 0, 0.25)
   line:SetHeight(1)
   line:SetPoint("LEFT", fs, "RIGHT", 8, 0)
-  line:SetPoint("RIGHT", parent, "RIGHT", -24, 0)
+  if lineEnd then
+    line:SetPoint("RIGHT", parent, "LEFT", lineEnd, 0)
+  else
+    line:SetPoint("RIGHT", parent, "RIGHT", -24, 0)
+  end
   return fs
 end
 
@@ -2015,7 +2026,8 @@ local function buildOptions()
 
   ---------------- page 2: Display ----------------
   local dp = pages[2]
-  makeSection(dp, "Style", -54)
+  local COL = 232 -- left column ends here, the preview starts after it
+  makeSection(dp, "Style", -54, 24, COL)
   local ry = -78
   local helps = {
     bars = "A full bar per DoT with its name. Easiest to read, takes the most space.",
@@ -2035,14 +2047,26 @@ local function buildOptions()
   ry = ry - 26
   makeCheck(dp, "Health % next to the name", "Green when healthy, yellow at half, red when low.",
     function() return db.showHP ~= false end, function(v) db.showHP = v end):SetPoint("TOPLEFT", 24, ry)
-  ry = ry - 46
-  makeSlider(dp, "Window size", 0.5, 1.5, 0.05,
-    function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-    function() return db.scale or 1 end, function(v) db.scale = v applySettings() end):SetPoint("TOPLEFT", 28, ry)
+  ry = ry - 36
+  makeSection(dp, "Window size", ry, 24, COL)
+  ry = ry - 24
+  local function nearestSize()
+    local best, bestD = 1, math.huge
+    for _, sz in ipairs(SIZES) do
+      local d = math.abs((db.scale or 1) - sz[1])
+      if d < bestD then best, bestD = sz[1], d end
+    end
+    return best
+  end
+  for _, sz in ipairs(SIZES) do
+    makeRadio(dp, sz[2], sz[3], sz[1], nearestSize,
+      function(v) db.scale = v applySettings() end):SetPoint("TOPLEFT", 28, ry)
+    ry = ry - 24
+  end
 
   -- preview box on the right
   local box = CreateFrame("Frame", nil, dp, BACKDROP_TEMPLATE)
-  box:SetPoint("TOPLEFT", 236, -76)
+  box:SetPoint("TOPLEFT", COL + 16, -76)
   box:SetPoint("BOTTOMRIGHT", -22, 6)
   if box.SetBackdrop then
     box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -2051,9 +2075,7 @@ local function buildOptions()
     box:SetBackdropColor(0.08, 0.06, 0.04, 0.9)
     box:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
   end
-  local pvTitle = dp:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  pvTitle:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 4, 4)
-  pvTitle:SetText("Preview")
+  makeSection(dp, "Preview", -54, COL + 16)
   local holder = CreateFrame("Frame", nil, box)
   holder:SetPoint("TOPLEFT", 12, -12)
   holder:SetSize(220, 300)
