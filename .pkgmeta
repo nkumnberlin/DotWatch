@@ -1,0 +1,9 @@
+# CurseForge packager: builds DotWatch.zip with one folder "DotWatch"
+# from every tagged commit (v0.9 = release, v1.0-beta = beta, v1.0-alpha = alpha).
+package-as: DotWatch
+
+ignore:
+  - DotProbe
+  - README.md
+  - .gitignore
+  - .pkgmeta

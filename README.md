@@ -21,13 +21,15 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 
 ## Install
 
-Copy the `DotWatch` folder into your Forever client's AddOns folder, so that this file exists:
+Easiest: install it from CurseForge. By hand: download the zip from the CurseForge files (or a GitHub release), and put the `DotWatch` folder into your Forever client's AddOns folder, so that this file exists:
 
 ```
 World of Warcraft\_forever_\Interface\AddOns\DotWatch\DotWatch.toc
 ```
 
 Then start the game or type `/reload`.
+
+This repository has the addon files at the top level. Every version tag (`v0.9`, …) is packaged by CurseForge into a zip with one `DotWatch` folder (see `.pkgmeta`); `DotProbe` is not part of it.
 
 ## Commands
 
