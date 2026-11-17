@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.12.1"
+local VERSION = "0.13"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -108,6 +108,81 @@ local SPELLS = {
   { name = "Banish",                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true },
   { name = "Enslave Demon",         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true },
   { name = "Death Coil",            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
+
+  -- 0.13: the other classes (WoW Forever data, see project doc class-dots-cc.md).
+  -- Not tracked on purpose: random procs, combo-point finishers, channels, self-centered AoE.
+  -- Priest
+  { class = "PRIEST", name = "Shadow Word: Pain",   dur = 18, color = { 0.60, 0.25, 0.85 }, slot = "swp", tick = 3, school = 32 },
+  { class = "PRIEST", name = "Devouring Plague",    dur = 24, color = { 0.35, 0.80, 0.30 }, slot = "plague", tick = 3, school = 32 },
+  { class = "PRIEST", name = "Holy Fire",           dur = 10, color = { 1.00, 0.75, 0.25 }, slot = "holyfire", tick = 2, school = 2 },
+  { class = "PRIEST", name = "Shackle Undead",      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true },
+  { class = "PRIEST", name = "Chastise",            dur = 2,  color = { 1.00, 0.90, 0.55 }, cc = true },
+  { class = "PRIEST", name = "Silence",             dur = 5,  color = { 0.55, 0.45, 0.80 }, cc = true },
+  -- Druid
+  { class = "DRUID", name = "Moonfire",             dur = 12, color = { 0.55, 0.65, 1.00 }, slot = "moonfire", tick = 3, school = 64 },
+  { class = "DRUID", name = "Insect Swarm",         dur = 12, color = { 0.55, 0.80, 0.25 }, slot = "swarm", tick = 2, school = 8 },
+  { class = "DRUID", name = "Rake",                 dur = 9,  color = { 0.90, 0.30, 0.25 }, slot = "rake", tick = 3, school = 1 },
+  { class = "DRUID", name = "Lacerate",             dur = 15, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
+  { class = "DRUID", name = "Entangling Roots",     dur = 27, color = { 0.35, 0.70, 0.30 }, cc = true, tick = 3, school = 8 },
+  { class = "DRUID", name = "Hibernate",            dur = 40, color = { 0.45, 0.75, 0.55 }, cc = true },
+  { class = "DRUID", name = "Bash",                 dur = 4,  color = { 0.80, 0.55, 0.35 }, cc = true },
+  { class = "DRUID", name = "Pounce",               dur = 2,  color = { 0.90, 0.70, 0.30 }, cc = true },
+  { class = "DRUID", name = "Feral Charge",         dur = 4,  color = { 0.70, 0.50, 0.30 }, cc = true },
+  -- Hunter (traps: the timer starts when the trap goes off, see "Traps")
+  { class = "HUNTER", name = "Serpent Sting",       dur = 15, color = { 0.35, 0.80, 0.30 }, group = "sting", slot = "sting", tick = 3, school = 8 },
+  { class = "HUNTER", name = "Viper Sting",         dur = 8,  color = { 0.40, 0.55, 1.00 }, group = "sting", slot = "sting" },
+  { class = "HUNTER", name = "Lacerate",            dur = 21, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
+  { class = "HUNTER", name = "Immolation Trap",     dur = 15, color = { 1.00, 0.45, 0.10 }, trap = "fire", tick = 3, school = 4 },
+  { class = "HUNTER", name = "Explosive Trap",      dur = 20, color = { 1.00, 0.30, 0.15 }, trap = "fire", aoe = true, tick = 2, school = 4 },
+  { class = "HUNTER", name = "Freezing Trap",       dur = 20, color = { 0.55, 0.80, 1.00 }, trap = "aura", cc = true },
+  { class = "HUNTER", name = "Scare Beast",         dur = 20, color = { 0.75, 0.55, 0.30 }, cc = true },
+  { class = "HUNTER", name = "Scatter Shot",        dur = 4,  color = { 0.85, 0.75, 0.40 }, cc = true },
+  { class = "HUNTER", name = "Counterattack",       dur = 5,  color = { 0.70, 0.60, 0.45 }, cc = true },
+  -- Rogue
+  { class = "ROGUE", name = "Garrote",              dur = 18, color = { 0.85, 0.20, 0.20 }, slot = "garrote", tick = 3, school = 1 },
+  { class = "ROGUE", name = "Sap",                  dur = 45, color = { 0.65, 0.65, 0.75 }, cc = true },
+  { class = "ROGUE", name = "Blind",                dur = 10, color = { 0.75, 0.75, 0.55 }, cc = true },
+  { class = "ROGUE", name = "Gouge",                dur = 4,  color = { 0.85, 0.55, 0.35 }, cc = true },
+  { class = "ROGUE", name = "Cheap Shot",           dur = 4,  color = { 0.90, 0.80, 0.30 }, cc = true },
+  -- Shaman
+  { class = "SHAMAN", name = "Flame Shock",         dur = 12, color = { 1.00, 0.45, 0.10 }, slot = "flameshock", tick = 3, school = 4 },
+  -- Mage (the burn after Fireball, Pyroblast and Frostfire Bolt)
+  { class = "MAGE", name = "Fireball",              dur = 8,  color = { 1.00, 0.50, 0.10 }, tick = 2, school = 4 },
+  { class = "MAGE", name = "Pyroblast",             dur = 12, color = { 1.00, 0.30, 0.10 }, tick = 3, school = 4 },
+  { class = "MAGE", name = "Frostfire Bolt",        dur = 9,  color = { 0.55, 0.55, 1.00 } },
+  { class = "MAGE", name = "Polymorph",             dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true },
+  { class = "MAGE", name = "Polymorph: Cow",        dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true },
+  -- Paladin
+  { class = "PALADIN", name = "Hammer of Justice",  dur = 6,  color = { 1.00, 0.85, 0.35 }, cc = true },
+  { class = "PALADIN", name = "Repentance",         dur = 6,  color = { 0.95, 0.95, 0.75 }, cc = true },
+  { class = "PALADIN", name = "Turn Undead",        dur = 20, color = { 1.00, 0.95, 0.60 }, cc = true },
+  -- Warrior
+  { class = "WARRIOR", name = "Rend",               dur = 21, color = { 0.85, 0.15, 0.15 }, slot = "rend", tick = 3, school = 1 },
+  { class = "WARRIOR", name = "Intimidating Shout", dur = 8,  color = { 0.80, 0.55, 0.30 }, cc = true },
+  { class = "WARRIOR", name = "Concussion Blow",    dur = 5,  color = { 0.90, 0.75, 0.35 }, cc = true },
+  { class = "WARRIOR", name = "Intercept",          dur = 3,  color = { 0.75, 0.60, 0.40 }, cc = true },
+}
+-- fixed rows per enemy, per class (gray placeholders), and the spells for test/preview
+local CLASS_SLOTS = {
+  WARLOCK = { "corruption", "immolate", "siphon", "ua", "bane" },
+  PRIEST = { "swp", "plague", "holyfire" },
+  DRUID = { "moonfire", "swarm", "rake", "lacerate" },
+  HUNTER = { "sting", "lacerate" },
+  ROGUE = { "garrote" },
+  SHAMAN = { "flameshock" },
+  WARRIOR = { "rend" },
+  MAGE = {}, PALADIN = {},
+}
+local CLASS_SAMPLE = {
+  WARLOCK = { "Corruption", "Bane of Agony", "Immolate" },
+  PRIEST = { "Shadow Word: Pain", "Devouring Plague", "Holy Fire" },
+  DRUID = { "Moonfire", "Insect Swarm", "Rake" },
+  HUNTER = { "Serpent Sting", "Lacerate", "Scatter Shot" },
+  ROGUE = { "Garrote", "Sap", "Gouge" },
+  SHAMAN = { "Flame Shock", "Flame Shock", "Flame Shock" },
+  WARRIOR = { "Rend", "Intimidating Shout", "Concussion Blow" },
+  MAGE = { "Pyroblast", "Fireball", "Polymorph" },
+  PALADIN = { "Hammer of Justice", "Repentance", "Turn Undead" },
 }
 -- 0.12: every spell belongs to a class. Only warlock spells exist so far; other
 -- classes (Shadow Priest, Druid, ...) get their own entries later.
@@ -121,9 +196,19 @@ local function myClass()
   return myClassFile
 end
 local function isMine(s) return s.class == (myClass() or "WARLOCK") end
-local DEF_BY_NAME = {}
-for _, s in ipairs(SPELLS) do DEF_BY_NAME[s.name] = s end
-local SLOT_ORDER = { "corruption", "immolate", "siphon", "ua", "bane" }
+-- only the spells of the class you play (two classes can share a name, e.g. Lacerate)
+local DEF_BY_NAME, SLOT_ORDER = {}, {}
+local function rebuildDefs()
+  wipe(DEF_BY_NAME)
+  wipe(SLOT_ORDER)
+  for _, s in ipairs(SPELLS) do if isMine(s) then DEF_BY_NAME[s.name] = s end end
+  for _, slot in ipairs(CLASS_SLOTS[myClass() or "WARLOCK"] or {}) do SLOT_ORDER[#SLOT_ORDER + 1] = slot end
+end
+local function sampleSpells()
+  local list = CLASS_SAMPLE[myClass() or "WARLOCK"] or CLASS_SAMPLE.WARLOCK
+  return list[1], list[2], list[3]
+end
+rebuildDefs()
 
 local spellCache = {} -- spellID -> info table or false
 local nameByID = {}   -- spellID -> name (from the spellbook, readable out of combat)
@@ -247,6 +332,8 @@ end
 
 local dirty = true
 local function scanSpellbook(why)
+  rebuildDefs()
+  wipe(spellCache)
   wipe(known)
   if scanModern() then bookMethod = "C_SpellBook"
   elseif scanClassic() then bookMethod = "classic spellbook"
@@ -482,6 +569,7 @@ local function onSent(destName, castGUID, spellID)
   castGUID = str(castGUID)
   local info = spellInfo(spellID)
   if not info then return end
+  if info.def.trap then return end -- placed, not cast at anyone: see onSucceeded
   if not castGUID then dbg("IGNORE " .. info.name .. ": cast ID not readable") return end
   local guid, how = resolveDest(destName)
   if not guid then dbg("IGNORE " .. info.name .. ": " .. how) return end
@@ -496,9 +584,45 @@ local function onSent(destName, castGUID, spellID)
   dbg("SENT " .. info.name .. " -> " .. tostring(str(destName)) .. " [" .. short(guid) .. "] via " .. how)
 end
 
+-- Traps (0.13): the cast only places the trap. The timer starts on the enemy that
+-- sets it off: fire traps on the first fire damage an enemy takes, Freezing Trap on
+-- the first new debuff on an enemy. Explosive Trap catches everyone hit in 0.5 s.
+local armed = {} -- trap name -> { info, t, untilT, firedAt }
+local TRAP_LIFE = 60
+local function armTrap(info)
+  armed[info.name] = { info = info, t = now(), untilT = now() + TRAP_LIFE }
+  dbg("TRAP " .. info.name .. " placed")
+end
+local function trapHit(kind, unit)
+  local t = now()
+  for name, a in pairs(armed) do
+    if t > a.untilT or (a.firedAt and t - a.firedAt > 0.5) then
+      armed[name] = nil
+    elseif a.info.def.trap == kind and plain(UnitCanAttack, "player", unit) ~= false then
+      local k = keyOf(unit)
+      local m = k and mobs[k]
+      local fresh = false -- a debuff we just cast ourselves is not the trap
+      if kind == "aura" and m then
+        for _, d in pairs(m.dots) do if t - d.start < 0.3 then fresh = true end end
+      end
+      if k and not fresh and not (m and m.dots[a.info.id] and t - m.dots[a.info.id].start < 1) then
+        startDot(a.info, k, nameOf(unit), t, "(trap went off)")
+        a.firedAt = a.firedAt or t
+        if not a.info.def.aoe then armed[name] = nil end
+      end
+    end
+  end
+end
+
 local function onSucceeded(castGUID, spellID)
   castGUID = str(castGUID)
   if not castGUID then return end
+  local trapInfo = spellInfo(spellID)
+  if trapInfo and trapInfo.def.trap then
+    pending[castGUID] = nil
+    armTrap(trapInfo)
+    return
+  end
   local p = pending[castGUID]
   if p then
     pending[castGUID] = nil
@@ -530,6 +654,7 @@ local function onUnitCombat(unit, action, _, _, school)
     local g = keyOf(unit)
     local m = g and mobs[g]
     school = num(school)
+    if school == 4 and next(armed) then trapHit("fire", unit) end
     if m and school then
       m.lastTick = m.lastTick or {}
       m.lastTick[school] = now()
@@ -555,6 +680,7 @@ local function onUnitAura(unit, info)
     local hasAdded = issecret(added) or (type(added) == "table" and #added > 0)
     local hasUpdated = issecret(updated) or (type(updated) == "table" and #updated > 0)
     if hasAdded or hasUpdated then lastAura[guid] = now() end
+    if hasAdded and next(armed) then trapHit("aura", unit) end
     if m and hasAdded then
       local t = now()
       for _, d in pairs(m.dots) do
@@ -1884,23 +2010,24 @@ end)
 ---------------------------------------------------------------------------
 local function testBars()
   local t = now()
+  local s1, s2, s3 = sampleSpells()
   local samples = {
-    { "Test-0-0-0-0-1-AAA", "Glassweb Spider", { "Corruption", "Bane of Agony" }, { 6, 2 } },
-    { "Test-0-0-0-0-1-BBB", "Glassweb Spider", { "Immolate" }, { 9 } },
-    { "Test-0-0-0-0-2-CCC", "Blackrock Bootlegger", { "Corruption" }, { 1 } },
+    { "Test-0-0-0-0-1-AAA", "Glassweb Spider", { s1, s2 }, { 6, 2 } },
+    { "Test-0-0-0-0-1-BBB", "Glassweb Spider", { s3 }, { 9 } },
+    { "Test-0-0-0-0-2-CCC", "Blackrock Bootlegger", { s1 }, { 1 } },
   }
   for _, s in ipairs(samples) do
     local m = getMob(s[1], s[2])
     for i, name in ipairs(s[3]) do
       local id = type(known[name]) == "number" and known[name] or nil
-      local def = DEF_BY_NAME[name]
+      local def = DEF_BY_NAME[name] or SPELLS[1]
       local info = (id and spellInfo(id)) or { id = -i, name = name, def = def, slot = def.slot,
         group = def.group, color = def.color, icon = 136197 }
       local dur = id and durationOf(info) or def.dur
       m.dots[info.id] = { info = info, start = t - s[4][i], expires = t - s[4][i] + dur, confirmed = true }
     end
   end
-  addFlash(mobs["Test-0-0-0-0-2-CCC"], "Bane of Agony: Resisted", 1, 0.3, 0.3)
+  addFlash(mobs["Test-0-0-0-0-2-CCC"], s2 .. ": Resisted", 1, 0.3, 0.3)
   say("Test timers shown. They run out on their own or end when you leave combat.")
 end
 
@@ -2054,7 +2181,7 @@ local function knownList()
   end
   if #names == 0 then return "|cff888888nothing found yet|r" end
   local text = table.concat(names, ", ")
-  if not known["Siphon Life"] then text = text .. "  |cff888888(no Siphon Life)|r" end
+  if myClass() == "WARLOCK" and not known["Siphon Life"] then text = text .. "  |cff888888(no Siphon Life)|r" end
   return text
 end
 
@@ -2085,19 +2212,24 @@ end
 -- sample fight for the preview: same three enemies as the mockups
 local function buildSample()
   local t = now()
+  local fakeID = -100
   local function info(name)
     local id = type(known[name]) == "number" and known[name] or nil
     local i = id and spellInfo(id)
     if i then return i end
-    local def = DEF_BY_NAME[name]
-    return { id = -#name, name = name, def = def, slot = def.slot, group = def.group, color = def.color, icon = 136197 }
+    local def = DEF_BY_NAME[name] or SPELLS[1]
+    fakeID = fakeID - 1
+    return { id = fakeID, name = name, def = def, slot = def.slot, group = def.group, color = def.color, icon = 136197 }
   end
   local function dot(name, left, total)
     local i = info(name)
     return i.id, { info = i, start = t - (total - left), expires = t + left, confirmed = true }
   end
-  local banes = { "Bane of Agony", "Curse of Agony" }
-  local bane = known["Bane of Agony"] and banes[1] or (known["Curse of Agony"] and banes[2]) or banes[1]
+  local s1, s2, s3 = sampleSpells()
+  if myClass() == "WARLOCK" or not myClass() then
+    s2 = known["Bane of Agony"] and "Bane of Agony" or (known["Curse of Agony"] and "Curse of Agony") or "Bane of Agony"
+  end
+  local function len(name) local d = DEF_BY_NAME[name] return d and d.dur or 20 end
   local function mob(guid, name, letter, hp, created, spec, flash)
     local m = { guid = guid, name = name, letter = letter, created = created, fakeHP = hp, dots = {}, flash = {} }
     for _, x in ipairs(spec) do
@@ -2108,11 +2240,11 @@ local function buildSample()
     return m
   end
   local list = {
-    mob("preview-A", "Slave Worker", 1, 72, 1, { { "Corruption", 11.4, 18 }, { bane, 19.2, 24 } }),
-    mob("preview-B", "Slave Worker", 2, 45, 2, { { "Corruption", 4.2, 18 }, { "Immolate", 9.6, 15 }, { bane, 2.1, 24 } }),
-    mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { bane, 14.0, 24 } }, "Immolate: Resisted"),
+    mob("preview-A", "Slave Worker", 1, 72, 1, { { s1, len(s1) * 0.63, len(s1) }, { s2, len(s2) * 0.8, len(s2) } }),
+    mob("preview-B", "Slave Worker", 2, 45, 2, { { s1, len(s1) * 0.23, len(s1) }, { s3, len(s3) * 0.64, len(s3) }, { s2, 2.1, len(s2) } }),
+    mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { s2, len(s2) * 0.58, len(s2) } }, s3 .. ": Resisted"),
   }
-  if known["Siphon Life"] then
+  if known["Siphon Life"] and DEF_BY_NAME["Siphon Life"] then
     local id, d = dot("Siphon Life", 22, 30)
     list[1].dots[id] = d
   end
@@ -2873,7 +3005,7 @@ SlashCmdList.DOTWATCH = function(msg)
     for _, s in ipairs(SPELLS) do
       if known[s.name] then say("  " .. s.name .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")) end
     end
-    if not known["Siphon Life"] then say("  Siphon Life: not known") end
+    if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  Siphon Life: not known") end
   elseif cmd == "learned" then
     local any = false
     for id, dur in pairs(db.learned) do
