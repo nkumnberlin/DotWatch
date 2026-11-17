@@ -62,3 +62,7 @@ This repository has the addon files at the top level. Every version tag (`v0.9`,
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Releases
+
+A new version only needs the `## Version:` line in `DotWatch.toc` bumped and pushed to `main`. The GitHub Action in `.github/workflows/tag-release.yml` then creates the tag `v<version>`, and CurseForge packages and publishes it (tag with `-beta` / `-alpha` = beta / alpha file).
