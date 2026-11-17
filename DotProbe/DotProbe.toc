@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: DotProbe (Forever API-Test)
 ## Notes: Diagnose-Addon: protokolliert, welche Cast-, Aura-, Nameplate- und Kampfdaten in WoW Forever fuer Addons lesbar sind.
-## Version: 0.3
+## Version: 0.3.1
 ## SavedVariables: DotProbeDB
 
 DotProbe.lua

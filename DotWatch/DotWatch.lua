@@ -32,7 +32,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.8"
+local VERSION = "0.8.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1811,10 +1811,11 @@ local function tbActionState(b, t)
   end
   if issecret(start) or issecret(dur) then
     tbaLog("cd-secret", "cooldown: secret, handed to the widget")
-    if b.gcdStart ~= start then
-      b.gcdStart = start
-      pcall(b.gcd.SetCooldown, b.gcd, start, dur)
-    end
+    -- 0.8.1: secret numbers must not be compared (Lua error). Just hand them to the
+    -- widget on every check (10x per second); same start time = no visible restart.
+    b.gcdStart, b.gcdDur = nil, nil
+    b.gcd:Show()
+    pcall(b.gcd.SetCooldown, b.gcd, start, dur)
   elseif type(start) == "number" and type(dur) == "number" then
     tbaLog("cd-ok", "cooldown: readable")
     if dur > 0 and start > 0 then
@@ -1855,7 +1856,9 @@ local function updateTargetBar(t)
         end
       end
       b.running = active ~= nil
-      if checkState then tbActionState(b, t)
+      if checkState then
+        local okA, errA = pcall(tbActionState, b, t)
+        if not okA then tbaLog("state-err", "action state error: " .. tostring(errA)) end
       elseif db.tbAction == false then b.icon:SetVertexColor(1, 1, 1) end
       if active then
         local left = active.expires - t

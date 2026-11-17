@@ -528,6 +528,7 @@ local HELP = {
   "/dp show           - undo both hide variants, restore CVars",
   "/dp land           - landing chat lines on/off; /dp landstats = summary",
   "/dp click [spell]  - click test: rows per enemy nameplate, left = cast there, right = target",
+  "/dp click status   - why rows are missing (states, nameplates, conditional)",
   "/dp echo | aura | status | clear | help",
 }
 
@@ -627,7 +628,37 @@ local function ckBuild()
 end
 
 local function ckCommand(rest)
-  if InCombatLockdown() then say("Only out of combat (secure buttons).") return end
+  if InCombatLockdown() and rest ~= "status" then say("Only out of combat (secure buttons).") return end
+  if rest == "status" then
+    if not ck.header then say("Click test not built. /dp click first.") return end
+    local h = ck.header
+    say(string.format("header shown=%s h=%.0f", tostring(h:IsShown()), h:GetHeight() or -1))
+    local any = false
+    for i = 1, 40 do
+      local u = "nameplate" .. i
+      local st = h:GetAttribute("state-np" .. i)
+      if UnitExists(u) or st == "1" or ck.slots[i]:IsShown() then
+        any = true
+        local line = string.format("np%d exists=%s enemy=%s dead=%s state=%s row=%s spell=%s name=%s",
+          i, tostring(UnitExists(u)), tostring(UnitCanAttack("player", u)), tostring(UnitIsDead(u)),
+          tostring(st), tostring(ck.slots[i]:IsShown()), tostring(ck.slots[i]:GetAttribute("spell1")), fmt(UnitName(u)))
+        say(line)
+        log("CLICKSTAT", line)
+      end
+    end
+    if not any then say("No nameplate units and no states at all.") end
+    -- manual check of the conditional itself, outside the state driver
+    if SecureCmdOptionParse then
+      for i = 1, 40 do
+        if UnitExists("nameplate" .. i) then
+          local r = SecureCmdOptionParse("[@nameplate" .. i .. ",harm,nodead] 1; 0")
+          say("conditional np" .. i .. " -> " .. tostring(r))
+          log("CLICKSTAT", "conditional np" .. i .. " -> " .. tostring(r))
+        end
+      end
+    end
+    return
+  end
   if rest == "off" then
     if ck.header then ck.header:Hide() end
     say("Click test hidden.")
