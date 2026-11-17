@@ -34,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.10.1"
+local VERSION = "0.11"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1533,6 +1533,30 @@ local function updateCanvas(canvas, t)
   end
 end
 
+-- warning sounds, from soft to loud (0.11). Game sounds only: looked up by their
+-- SOUNDKIT name, with the classic ID as fallback.
+local SOUNDS = {
+  { key = "click",   label = "Soft click",          kit = "IG_MAINMENU_OPTION_CHECKBOX_ON", id = 856 },
+  { key = "page",    label = "Page turn",           kit = "IG_QUEST_LIST_OPEN",             id = 875 },
+  { key = "whisper", label = "Whisper",             kit = "TELL_MESSAGE",                   id = 3081 },
+  { key = "ping",    label = "Map ping",            kit = "MAP_PING",                       id = 3175 },
+  { key = "clock1",  label = "Alarm clock (soft)",  kit = "ALARM_CLOCK_WARNING_3",          id = 12889 },
+  { key = "clock2",  label = "Alarm clock",         kit = "ALARM_CLOCK_WARNING_2",          id = 12867 },
+  { key = "ready",   label = "Ready check",         kit = "READY_CHECK",                    id = 8960 },
+  { key = "emote",   label = "Boss emote",          kit = "RAID_BOSS_EMOTE_WARNING",        id = 12197 },
+  { key = "pvp",     label = "Battleground ready",  kit = "PVP_THROUGH_QUEUE",              id = 8458 },
+  { key = "horn",    label = "Raid warning (horn)", kit = "RAID_WARNING",                   id = 8959 },
+}
+local function soundIndex()
+  for i, snd in ipairs(SOUNDS) do if snd.key == db.warnSoundKey then return i end end
+  return #SOUNDS -- default: the horn, as before
+end
+local function playWarnSound(i)
+  local snd = SOUNDS[i or soundIndex()]
+  local id = (SOUNDKIT and SOUNDKIT[snd.kit]) or snd.id
+  pcall(PlaySound, id, "Master")
+end
+
 -- refresh warning sound: once per DoT when it drops under the warning time
 local function checkWarnings(t)
   if db.warn == false or not db.warnSound then return end
@@ -1543,7 +1567,7 @@ local function checkWarnings(t)
       if not d.warned and left > 0 and left <= (db.warnTime or 3) and not d.lost and not d.info.def.cc then
         d.warned = true
         if not db.warnTargetOnly or g == tg then
-          pcall(PlaySound, (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
+          playWarnSound()
         end
       end
     end
@@ -2164,6 +2188,37 @@ local function buildTimersPage(pg)
     function() return db.warnSound end, function(v) db.warnSound = v end):SetPoint("TOPLEFT", 26, y)
   makeCheck(pg, "Sound only for my target", "No sounds for the other enemies.",
     function() return db.warnTargetOnly ~= false end, function(v) db.warnTargetOnly = v end):SetPoint("TOPLEFT", 250, y)
+  y = y - 32
+  -- sound choice: < name > and a test button, list goes from soft to loud
+  local sl = pg:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  sl:SetPoint("TOPLEFT", 32, y - 5)
+  sl:SetText("Sound:")
+  local name = pg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  local pos = pg:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  local function show()
+    local i = soundIndex()
+    name:SetText(SOUNDS[i].label)
+    pos:SetText(i .. " / " .. #SOUNDS .. "  (soft > loud)")
+  end
+  local function step(dir)
+    local i = soundIndex() + dir
+    if i < 1 then i = #SOUNDS elseif i > #SOUNDS then i = 1 end
+    db.warnSoundKey = SOUNDS[i].key
+    show()
+    playWarnSound(i)
+  end
+  local prevB = makeButton(pg, "<", 26, function() step(-1) end)
+  prevB:SetPoint("TOPLEFT", 80, y)
+  name:SetPoint("LEFT", prevB, "RIGHT", 8, 0)
+  name:SetWidth(150)
+  name:SetJustifyH("CENTER")
+  local nextB = makeButton(pg, ">", 26, function() step(1) end)
+  nextB:SetPoint("LEFT", prevB, "RIGHT", 166, 0)
+  local testB = makeButton(pg, "Test", 60, function() playWarnSound() end)
+  testB:SetPoint("LEFT", nextB, "RIGHT", 10, 0)
+  pos:SetPoint("LEFT", testB, "RIGHT", 10, 0)
+  pg:HookScript("OnShow", show)
+  show()
   y = y - 36
 
   makeSection(pg, "Ticks", y)
