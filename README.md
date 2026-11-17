@@ -2,7 +2,7 @@
 
 DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for every class that has DoTs.
 
-Current release: **v0.14** (on CurseForge and as a tag here). Work in progress: Warlock is tested in game the most, the other classes are new in 0.13/0.14. Feedback and wishes are welcome in the issues.
+Current release: **v0.14** (on CurseForge as [Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), and as a tag here). Work in progress: Warlock is tested in game the most, the other classes are new in 0.13/0.14. Feedback and wishes are welcome in the issues.
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
 
