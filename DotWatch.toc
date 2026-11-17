@@ -2,6 +2,8 @@
 ## Title: DotWatch
 ## Notes: Warlock DoT timers per enemy, driven by your own casts. Detects resists and immunes.
 ## Version: 0.9.1
+## X-License: MIT
+## X-Website: https://github.com/nkumnberlin/DotWatch
 ## SavedVariables: DotWatchDB
 
 DotWatch.lua
