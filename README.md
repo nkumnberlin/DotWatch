@@ -12,11 +12,9 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Same-named enemies**: three "Slave Workers" become A, B and C, in the list and as a letter above their nameplates.
 - **Health %** next to each enemy's name, colored from green to yellow to red.
 - **Five display styles**: bars, slim bars, icons with timers, table, and target big with others small. You can switch between them in the options, with a live preview.
-- **Target bar**: one clickable button per DoT for your current target. A click casts the DoT, or refreshes it if it's already running. You can place the bar anywhere or dock it under your target frame.
 - **Refresh warning**: DoTs pulse in their last seconds, optionally with a sound.
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop.
 - **Control timers** for Fear, Banish, Enslave Demon and Death Coil.
-- **Target bar like an action bar**: red when out of range, blue without enough mana, global cooldown sweep, and keybindings (Key Bindings > AddOns > DotWatch).
 - **Look options**: font size, bar texture, a color per DoT, growth direction, fading out of combat.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
 - **Classic options window** and a minimap button with the Eye of Kilrogg icon.
@@ -47,7 +45,7 @@ Then start the game or type `/reload`.
 - **Start**: `UNIT_SPELLCAST_SENT` gives the enemy's name. DotWatch matches it to your target, mouseover, focus or a nameplate to get the enemy's GUID. `UNIT_SPELLCAST_SUCCEEDED` starts the timer, with the duration taken from the spell's tooltip.
 - **Resists**: when a DoT fails, the game sends `UNIT_COMBAT` with MISS, RESIST or IMMUNE on that enemy in the same frame as the successful cast. If no aura change arrives in that frame, the timer is cancelled.
 - **Out of combat** the real debuffs are readable, so DotWatch corrects its timers and learns the exact durations.
-- **Target bar**: secure spell buttons with `unit = target`. The game doesn't allow them to change during combat, so changes to the bar take effect after combat.
+- **No click-to-cast**: Forever lets a secure button reach only your current target (macro conditionals don't see nameplate units), so the target bar was removed in 0.9.
 
 ## Limits
 

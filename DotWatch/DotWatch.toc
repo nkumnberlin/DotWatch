@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: DotWatch
 ## Notes: Warlock DoT timers per enemy, driven by your own casts. Detects resists and immunes.
-## Version: 0.8.1
+## Version: 0.9
 ## SavedVariables: DotWatchDB
 
 DotWatch.lua

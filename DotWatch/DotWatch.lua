@@ -18,6 +18,7 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.9: target bar removed (Forever only lets a click reach the current target).
 -- New in 0.8: refresh warning, tick marks, "DoT lost?", control timers, target bar like an
 -- action bar + keybindings, Look page (font, texture, colors), growth direction,
 -- out-of-combat fading, statistics and fight summary.
@@ -32,7 +33,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.8.1"
+local VERSION = "0.9"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -232,7 +233,6 @@ local function scanByName()
 end
 
 local dirty = true
-local tbDirty = true -- the target bar's buttons need a rebuild (out of combat)
 local function scanSpellbook(why)
   wipe(known)
   if scanModern() then bookMethod = "C_SpellBook"
@@ -245,7 +245,6 @@ local function scanSpellbook(why)
   for _, s in ipairs(SPELLS) do
     if known[s.name] then list[#list + 1] = s.name .. "=" .. tostring(known[s.name]) end
   end
-  tbDirty = true
   dbg("SPELLBOOK (" .. (why or "?") .. ") via " .. bookMethod .. ": " .. (#list > 0 and table.concat(list, ", ") or "nothing"))
   dirty = true
 end
@@ -1597,308 +1596,7 @@ local function updateHP()
   end
 end
 
----------------------------------------------------------------------------
--- Target bar: clickable DoT buttons for the current target
----------------------------------------------------------------------------
--- Secure spell buttons with unit "target": a click casts or refreshes that DoT
--- on whatever you are targeting. Secure buttons can't change, move, show or
--- hide in combat, so they are built out of combat and shown by a state driver.
--- Modes: "off", "free" (place it anywhere) and "dock" (under the target frame).
-BINDING_HEADER_DOTWATCH = "DotWatch"
-for i = 1, 5 do _G["BINDING_NAME_CLICK DotWatchTargetBarButton" .. i .. ":LeftButton"] = "Target bar " .. i end
-
-local tbar, tbHandle, tbName, tbHP
-local tbButtons = {}
-local TB_SHOW = "[@target,harm,nodead] show; hide"
-local TB_SHOW_UNLOCKED = "[@target,harm,nodead] show; [nocombat] show; hide"
-
-local function tbSlots()
-  local list = {}
-  for _, slot in ipairs(SLOT_ORDER) do
-    local s, id = slotSpell(slot)
-    if s then list[#list + 1] = { slot = slot, name = s.name, id = type(id) == "number" and id or nil } end
-  end
-  return list
-end
-
-local function tbTooltip(self)
-  GameTooltip:SetOwner(self, "ANCHOR_TOP")
-  GameTooltip:SetText(self.spellName or "?", 1, 1, 1)
-  local tname = nameOf("target")
-  if tname then
-    GameTooltip:AddLine("Left-click: " .. (self.running and "refresh on " or "cast on ") .. tname, 0.12, 1, 0)
-  end
-  GameTooltip:AddLine("Always aims at your current target", 0.66, 0.6, 0.53)
-  GameTooltip:Show()
-end
-
-local function tbCreateButton(i)
-  local ok, b = pcall(CreateFrame, "Button", "DotWatchTargetBarButton" .. i, tbar, "SecureActionButtonTemplate")
-  if not ok then return nil end
-  b:RegisterForClicks("AnyUp", "AnyDown")
-  b.border = b:CreateTexture(nil, "BACKGROUND")
-  b.border:SetColorTexture(0, 0, 0, 1)
-  b.border:SetPoint("TOPLEFT", -1, 1)
-  b.border:SetPoint("BOTTOMRIGHT", 1, -1)
-  b.icon = b:CreateTexture(nil, "ARTWORK")
-  b.icon:SetAllPoints()
-  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-  b:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
-  local okc, cd = pcall(CreateFrame, "Cooldown", nil, b, "CooldownFrameTemplate")
-  if not okc then cd = CreateFrame("Cooldown", nil, b) end
-  cd:SetAllPoints()
-  pcall(cd.SetHideCountdownNumbers, cd, true)
-  pcall(cd.SetDrawEdge, cd, false)
-  b.cd = cd
-  -- global cooldown / spell cooldown, like an action button (drawn over the DoT sweep)
-  local okg, gcd = pcall(CreateFrame, "Cooldown", nil, b, "CooldownFrameTemplate")
-  if not okg then gcd = CreateFrame("Cooldown", nil, b) end
-  gcd:SetAllPoints()
-  pcall(gcd.SetHideCountdownNumbers, gcd, true)
-  pcall(gcd.SetDrawEdge, gcd, true)
-  gcd:SetFrameLevel((cd:GetFrameLevel() or 1) + 1)
-  b.gcd = gcd
-  b.holder = CreateFrame("Frame", nil, b)
-  b.holder:SetAllPoints()
-  b.holder:SetFrameLevel((cd:GetFrameLevel() or 1) + 3)
-  b.time = b.holder:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-  b.time:SetPoint("CENTER")
-  b.hint = b.holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  b.hint:SetPoint("BOTTOMRIGHT", -1, 1)
-  b:HookScript("OnEnter", tbTooltip)
-  b:HookScript("OnLeave", function() GameTooltip:Hide() end)
-  return b
-end
-
-local function tbPlace()
-  tbar:ClearAllPoints()
-  local tf = _G.TargetFrame
-  if db.targetBar == "dock" and tf then
-    tbar:SetPoint("TOPLEFT", tf, "BOTTOMLEFT", db.tbDockX or 40, db.tbDockY or 4)
-  elseif db.tbPos then
-    tbar:SetPoint(db.tbPos[1], UIParent, db.tbPos[2], db.tbPos[3], db.tbPos[4])
-  else
-    tbar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
-  end
-end
-
-local function buildTargetBar()
-  if InCombatLockdown() then tbDirty = true return end
-  tbDirty = false
-  local mode = db.targetBar or "off"
-  if not tbar then
-    if mode == "off" then return end
-    local ok, f = pcall(CreateFrame, "Frame", "DotWatchTargetBar", UIParent, "SecureHandlerStateTemplate")
-    if not ok then f = CreateFrame("Frame", "DotWatchTargetBar", UIParent) end
-    tbar = f
-    tbar:SetMovable(true)
-    tbar:SetClampedToScreen(true)
-    tbName = tbar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tbName:SetPoint("BOTTOMLEFT", tbar, "TOPLEFT", 0, 3)
-    tbHP = tbar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tbHP:SetPoint("LEFT", tbName, "RIGHT", 5, 0)
-    -- drag handle, only while unlocked and in "free" mode
-    tbHandle = CreateFrame("Frame", nil, tbar)
-    tbHandle:SetAllPoints()
-    tbHandle:SetFrameLevel(tbar:GetFrameLevel() + 20)
-    local hbg = tbHandle:CreateTexture(nil, "OVERLAY")
-    hbg:SetAllPoints()
-    hbg:SetColorTexture(0.3, 0.1, 0.5, 0.5)
-    local ht = tbHandle:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ht:SetPoint("CENTER")
-    ht:SetText("Target bar")
-    tbHandle:EnableMouse(true)
-    tbHandle:RegisterForDrag("LeftButton")
-    tbHandle:SetScript("OnDragStart", function() if not InCombatLockdown() then tbar:StartMoving() end end)
-    tbHandle:SetScript("OnDragStop", function()
-      tbar:StopMovingOrSizing()
-      local p, _, rp, x, y = tbar:GetPoint()
-      db.tbPos = { p, rp, x, y }
-    end)
-  end
-
-  if mode == "off" then
-    if UnregisterStateDriver then UnregisterStateDriver(tbar, "visibility") end
-    tbar:Hide()
-    return
-  end
-
-  local size = db.tbSize or 36
-  local slots = tbSlots()
-  for i, s in ipairs(slots) do
-    local b = tbButtons[i] or tbCreateButton(i)
-    if not b then break end
-    tbButtons[i] = b
-    b.slot, b.spellName = s.slot, s.name
-    b:SetAttribute("type", "spell")
-    b:SetAttribute("spell", s.name)
-    b:SetAttribute("unit", "target")
-    b:SetSize(size, size)
-    b:ClearAllPoints()
-    b:SetPoint("TOPLEFT", tbar, "TOPLEFT", (i - 1) * (size + 6), 0)
-    b.time:SetFontObject(size >= 40 and "NumberFontNormalLarge" or "NumberFontNormal")
-    b.icon:SetTexture(s.id and iconOf(s.id) or 136197)
-    b:Show()
-  end
-  for i = #slots + 1, #tbButtons do tbButtons[i]:Hide() end
-  tbar:SetSize(math.max(#slots * (size + 6) - 6, size), size)
-  tbPlace()
-
-  local free = mode == "free"
-  local unlocked = free and not db.locked
-  tbHandle:SetShown(unlocked)
-  tbName:SetShown(free and db.tbLabel ~= false)
-  tbHP:SetShown(free and db.tbLabel ~= false)
-  if RegisterStateDriver then
-    RegisterStateDriver(tbar, "visibility", unlocked and TB_SHOW_UNLOCKED or TB_SHOW)
-  else
-    tbar:Show()
-  end
-  for i = 1, 5 do
-    local s = slots[i]
-    _G["BINDING_NAME_CLICK DotWatchTargetBarButton" .. i .. ":LeftButton"] =
-      "Target bar " .. i .. (s and (": " .. s.name) or "")
-  end
-  dbg("TARGETBAR built: " .. mode .. ", " .. #slots .. " buttons")
-end
-
--- action-button state: range, mana, cooldown. Every API is tried carefully and
--- what Forever allows is logged once (TBAPI lines in the debug log).
-local TBA = { nextCheck = 0, logged = {} }
-local function tbaLog(key, msg)
-  if TBA.logged[key] then return end
-  TBA.logged[key] = true
-  dbg("TBAPI " .. msg)
-end
-
-local function tbActionState(b, t)
-  local name = b.spellName
-  -- range
-  local outOfRange = false
-  local f = (C_Spell and C_Spell.IsSpellInRange) or IsSpellInRange
-  if f then
-    local ok, v = pcall(f, name, "target")
-    if not ok then tbaLog("range-err", "range: error " .. tostring(v))
-    elseif issecret(v) then tbaLog("range-secret", "range: secret")
-    else
-      tbaLog("range-ok", "range: readable")
-      outOfRange = (v == false or v == 0)
-    end
-  else
-    tbaLog("range-missing", "range: no API")
-  end
-  -- mana
-  local noMana = false
-  f = (C_Spell and C_Spell.IsSpellUsable) or IsUsableSpell
-  if f then
-    local ok, usable, lacking = pcall(f, name)
-    if not ok then tbaLog("usable-err", "usable: error " .. tostring(usable))
-    elseif issecret(lacking) then tbaLog("usable-secret", "usable: secret")
-    else
-      tbaLog("usable-ok", "usable: readable")
-      noMana = lacking == true or lacking == 1
-    end
-  end
-  -- cooldown / global cooldown
-  local start, dur
-  if C_Spell and C_Spell.GetSpellCooldown then
-    local ok, info = pcall(C_Spell.GetSpellCooldown, name)
-    if ok and type(info) == "table" and not issecret(info) then start, dur = info.startTime, info.duration end
-  elseif GetSpellCooldown then
-    local ok, s1, d1 = pcall(GetSpellCooldown, name)
-    if ok then start, dur = s1, d1 end
-  end
-  if issecret(start) or issecret(dur) then
-    tbaLog("cd-secret", "cooldown: secret, handed to the widget")
-    -- 0.8.1: secret numbers must not be compared (Lua error). Just hand them to the
-    -- widget on every check (10x per second); same start time = no visible restart.
-    b.gcdStart, b.gcdDur = nil, nil
-    b.gcd:Show()
-    pcall(b.gcd.SetCooldown, b.gcd, start, dur)
-  elseif type(start) == "number" and type(dur) == "number" then
-    tbaLog("cd-ok", "cooldown: readable")
-    if dur > 0 and start > 0 then
-      if b.gcdStart ~= start or b.gcdDur ~= dur then
-        b.gcdStart, b.gcdDur = start, dur
-        b.gcd:Show()
-        pcall(b.gcd.SetCooldown, b.gcd, start, dur)
-      end
-    elseif b.gcdStart then
-      b.gcdStart, b.gcdDur = nil, nil
-      pcall(b.gcd.SetCooldown, b.gcd, 0, 0)
-    end
-  else
-    tbaLog("cd-none", "cooldown: not available")
-  end
-  if outOfRange then
-    b.icon:SetVertexColor(0.9, 0.25, 0.25)
-  elseif noMana then
-    b.icon:SetVertexColor(0.35, 0.4, 1)
-  else
-    b.icon:SetVertexColor(1, 1, 1)
-  end
-end
-
-local function updateTargetBar(t)
-  if not (tbar and tbar:IsShown()) then return end
-  local checkState = db.tbAction ~= false and t >= TBA.nextCheck
-  if checkState then TBA.nextCheck = t + 0.1 end
-  local g = guidOf("target")
-  local m = g and mobs[g]
-  local immune = db.immune[npcID(g or "") or 0] or {}
-  for _, b in ipairs(tbButtons) do
-    if b:IsShown() and b.slot then
-      local active
-      if m then
-        for _, d in pairs(m.dots) do
-          if d.info.slot == b.slot and (not active or d.start > active.start) then active = d end
-        end
-      end
-      b.running = active ~= nil
-      if checkState then
-        local okA, errA = pcall(tbActionState, b, t)
-        if not okA then tbaLog("state-err", "action state error: " .. tostring(errA)) end
-      elseif db.tbAction == false then b.icon:SetVertexColor(1, 1, 1) end
-      if active then
-        local left = active.expires - t
-        b.icon:SetTexture(active.info.icon)
-        b.icon:SetDesaturated(active.lost and true or false)
-        b.icon:SetAlpha((active.confirmed and 1 or 0.85) * LOOK.pulse(active, left, t))
-        if b.cdStart ~= active.start or b.cdEnd ~= active.expires then
-          b.cdStart, b.cdEnd = active.start, active.expires
-          b.cd:Show()
-          pcall(b.cd.SetCooldown, b.cd, active.start, active.expires - active.start)
-        end
-        timeText(b.time, active, left)
-        b.hint:SetText("")
-      else
-        b.icon:SetDesaturated(true)
-        b.icon:SetAlpha(0.55)
-        if b.cdStart then
-          b.cdStart, b.cdEnd = nil, nil
-          pcall(b.cd.SetCooldown, b.cd, 0, 0)
-          b.cd:Hide()
-        end
-        b.time:SetText("")
-        b.hint:SetText(immune[b.spellName] and "|cffcc5555imm|r" or "|cffbbbbbbcast|r")
-      end
-    end
-  end
-  if tbName:IsShown() then
-    local name = nameOf("target")
-    tbName:SetText(name or "")
-    if g and mobs[g] then
-      local count = 0
-      for _, o in pairs(mobs) do if o.name == mobs[g].name then count = count + 1 end end
-      if count > 1 then tbName:SetText((name or "") .. " " .. LETTERS:sub(mobs[g].letter, mobs[g].letter)) end
-    end
-  end
-end
-
-
 local scanElapsed = 0
-local lastLocked
 local ticker = CreateFrame("Frame") -- separate, so it keeps running while the window is hidden
 ticker:SetScript("OnUpdate", function(_, elapsed)
   if not db then return end
@@ -1907,13 +1605,9 @@ ticker:SetScript("OnUpdate", function(_, elapsed)
     scanElapsed = 0
     scan()
     updateHP()
-    if tbHP and tbHP:IsShown() then setHP(tbHP, db.showHP ~= false and "target" or nil) end
   end
   if dirty then layout() end
   updateBars()
-  if db.locked ~= lastLocked then lastLocked = db.locked tbDirty = true end
-  if tbDirty and not InCombatLockdown() then buildTargetBar() end
-  updateTargetBar(now())
 end)
 
 local initSettings, openOptions -- defined with the options window further down
@@ -2370,7 +2064,7 @@ local function buildTimersPage(pg)
   local y = -54
   makeSection(pg, "Refresh warning", y)
   y = y - 22
-  makeCheck(pg, "Pulse DoTs that are about to run out", "The DoT blinks softly in the last seconds, in the list and on the target bar.",
+  makeCheck(pg, "Pulse DoTs that are about to run out", "The DoT blinks softly in the last seconds.",
     function() return db.warn ~= false end, function(v) db.warn = v end):SetPoint("TOPLEFT", 26, y)
   y = y - 44
   makeSlider(pg, "Warn when less than", 1, 6, 1, "%d s",
@@ -2520,7 +2214,7 @@ local function buildOptions()
   -- pages on the right, chosen in the list on the left
   local NAV_W = 160
   local pages = {}
-  for i = 1, 6 do
+  for i = 1, 5 do
     local pg = CreateFrame("Frame", nil, f)
     pg:SetPoint("TOPLEFT", NAV_W, 0)
     pg:SetPoint("BOTTOMRIGHT", 0, 50)
@@ -2661,49 +2355,8 @@ local function buildOptions()
   ---------------- page 4: Timers ----------------
   buildTimersPage(pages[4])
 
-  ---------------- page 6: Statistics ----------------
-  buildStatsPage(pages[6])
-
-  ---------------- page 5: Target bar ----------------
-  local tp = pages[5]
-  local function tbChanged() tbDirty = true if InCombatLockdown() then say("Target bar changes apply after combat.") end end
-  makeSection(tp, "Target bar", -54)
-  local intro = tp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  intro:SetPoint("TOPLEFT", 26, -74)
-  intro:SetPoint("RIGHT", tp, "RIGHT", -26, 0)
-  intro:SetJustifyH("LEFT")
-  intro:SetText("One button per DoT you know, for your current target. It shows the timers, and a click casts the DoT (gray) or refreshes it (running).")
-  local ty = -108
-  local modes = {
-    { "off", "Off", "No target bar." },
-    { "free", "Place it anywhere", "A small bar of its own. Unlock the window (General) to drag it, e.g. above your action bars." },
-    { "dock", "Under the target frame", "Sits right under your target frame and moves with it." },
-  }
-  for _, md in ipairs(modes) do
-    makeRadio(tp, md[2], md[3], md[1], function() return db.targetBar or "off" end,
-      function(v) db.targetBar = v tbChanged() end):SetPoint("TOPLEFT", 28, ty)
-    ty = ty - 24
-  end
-  ty = ty - 8
-  makeCheck(tp, "Name and health above the bar", "Only when the bar is placed freely; docked, your target frame already shows them.",
-    function() return db.tbLabel ~= false end, function(v) db.tbLabel = v tbChanged() end):SetPoint("TOPLEFT", 24, ty)
-  ty = ty - 26
-  makeCheck(tp, "Like an action bar: range, mana, cooldown", "Red when out of range, blue without enough mana, and the global cooldown sweep.",
-    function() return db.tbAction ~= false end, function(v) db.tbAction = v end):SetPoint("TOPLEFT", 24, ty)
-  ty = ty - 46
-  makeSlider(tp, "Button size", 24, 52, 2, "%d px",
-    function() return db.tbSize or 36 end, function(v) db.tbSize = v tbChanged() end):SetPoint("TOPLEFT", 28, ty)
-  ty = ty - 50
-  makeSlider(tp, "Docked: distance to the left", -40, 160, 2, "%d px",
-    function() return db.tbDockX or 40 end, function(v) db.tbDockX = v tbChanged() end):SetPoint("TOPLEFT", 28, ty)
-  ty = ty - 50
-  makeSlider(tp, "Docked: distance below", -20, 60, 2, "%d px",
-    function() return db.tbDockY or 4 end, function(v) db.tbDockY = v tbChanged() end):SetPoint("TOPLEFT", 28, ty)
-  local note = tp:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  note:SetPoint("BOTTOMLEFT", 26, 8)
-  note:SetPoint("RIGHT", tp, "RIGHT", -26, 0)
-  note:SetJustifyH("LEFT")
-  note:SetText("Keys: Game Menu > Key Bindings > AddOns > DotWatch. The game doesn't allow these buttons to change during combat, so changes here apply when combat ends.")
+  ---------------- page 5: Statistics ----------------
+  buildStatsPage(pages[5])
 
   ---------------- navigation list on the left ----------------
   local navBg = CreateFrame("Frame", nil, f, BACKDROP_TEMPLATE)
@@ -2735,7 +2388,7 @@ local function buildOptions()
       pv.redraw()
     end
   end
-  for i, label in ipairs({ "General", "Display", "Look", "Timers", "Target bar", "Statistics" }) do
+  for i, label in ipairs({ "General", "Display", "Look", "Timers", "Statistics" }) do
     local it = CreateFrame("Button", nil, navBg)
     it:SetSize(NAV_W - 34, 24)
     it:SetPoint("TOPLEFT", 9, -10 - (i - 1) * 26)
@@ -2868,9 +2521,8 @@ initSettings = function()
   if db.showHP == nil then db.showHP = true end
   db.scale = db.scale or 1
   db.style = db.style or "bars"
-  db.targetBar = db.targetBar or "free"
-  -- 0.7.1 had a "tracker" mode that was rolled back
-  if db.targetBar ~= "off" and db.targetBar ~= "free" and db.targetBar ~= "dock" then db.targetBar = "free" end
+  -- 0.9: the target bar is gone (clicking can only ever reach the current target in Forever)
+  for _, k in ipairs({ "targetBar", "tbAction", "tbLabel", "tbSize", "tbDockX", "tbDockY", "tbPos" }) do db[k] = nil end
   db.stats = db.stats or {}
   db.untracked = db.untracked or {}
   db.colors = db.colors or {}
@@ -2880,7 +2532,6 @@ initSettings = function()
   if db.ticks == nil then db.ticks = true end
   if db.lostCheck == nil then db.lostCheck = true end
   if db.trackCC == nil then db.trackCC = true end
-  if db.tbAction == nil then db.tbAction = true end
   if db.recordStats == nil then db.recordStats = true end
   db.fontSize = db.fontSize or "small"
   db.texture = db.texture or "classic"
