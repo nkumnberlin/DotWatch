@@ -19,6 +19,7 @@
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
 -- New in 0.9: target bar removed (Forever only lets a click reach the current target).
+-- New in 0.9.1: no StaticPopup / UISpecialFrames (they tainted Escape -> SpellStopCasting forbidden).
 -- New in 0.8: refresh warning, tick marks, "DoT lost?", control timers, target bar like an
 -- action bar + keybindings, Look page (font, texture, colors), growth direction,
 -- out-of-combat fading, statistics and fight summary.
@@ -33,7 +34,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.9"
+local VERSION = "0.9.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -2154,15 +2155,27 @@ local function buildStatsPage(pg)
   end
   pg:HookScript("OnShow", fill)
 
-  StaticPopupDialogs = StaticPopupDialogs or {}
-  StaticPopupDialogs["DOTWATCH_RESET_STATS"] = {
-    text = "Delete all DotWatch statistics?\nKnown immunities are deleted too.",
-    button1 = YES or "Yes", button2 = NO or "No",
-    OnAccept = function() wipe(db.stats) wipe(db.immune) fill() dirty = true end,
-    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-  }
-  local reset = makeButton(pg, "Reset statistics", 140, function() StaticPopup_Show("DOTWATCH_RESET_STATS") end)
+  -- 0.9.1: inline confirmation instead of a StaticPopup. Writing to the global
+  -- StaticPopupDialogs tainted Blizzard's Escape handling (SpellStopCasting forbidden).
+  local reset, yes, no, ask
+  local function setAsking(on)
+    reset:SetShown(not on)
+    yes:SetShown(on) no:SetShown(on) ask:SetShown(on)
+  end
+  reset = makeButton(pg, "Reset statistics", 140, function() setAsking(true) end)
   reset:SetPoint("BOTTOMLEFT", 24, 6)
+  ask = pg:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  ask:SetPoint("BOTTOMLEFT", 26, 11)
+  ask:SetText("Delete all statistics and known immunities?")
+  yes = makeButton(pg, YES or "Yes", 60, function()
+    wipe(db.stats) wipe(db.immune) fill() dirty = true
+    setAsking(false)
+  end)
+  yes:SetPoint("LEFT", ask, "RIGHT", 10, 0)
+  no = makeButton(pg, NO or "No", 60, function() setAsking(false) end)
+  no:SetPoint("LEFT", yes, "RIGHT", 4, 0)
+  setAsking(false)
+  pg:HookScript("OnHide", function() setAsking(false) end)
 end
 
 local function buildOptions()
@@ -2187,7 +2200,20 @@ local function buildOptions()
     bg:SetPoint("TOPLEFT", 11, -12)
     bg:SetPoint("BOTTOMRIGHT", -12, 11)
   end
-  tinsert(UISpecialFrames, "DotWatchOptions") -- Escape closes it
+  -- Escape closes it. 0.9.1: no longer via UISpecialFrames (an addon entry there is
+  -- tainted data that Blizzard's Escape code reads). The window catches Escape itself;
+  -- SetPropagateKeyboardInput is blocked in combat, so in combat it lets every key through.
+  f:SetScript("OnKeyDown", function(self, key)
+    if InCombatLockdown() then return end
+    if key == "ESCAPE" then
+      self:SetPropagateKeyboardInput(false)
+      self:Hide()
+    else
+      self:SetPropagateKeyboardInput(true)
+    end
+  end)
+  f:RegisterEvent("PLAYER_REGEN_DISABLED")
+  f:SetScript("OnEvent", function(self) self:EnableKeyboard(false) end)
 
   local header = f:CreateTexture(nil, "ARTWORK")
   header:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Header")
@@ -2424,6 +2450,12 @@ local function buildOptions()
   tip(bTest, "Test", "Shows sample timers in the real window so you can place it.")
 
   f:SetScript("OnShow", function(self)
+    if InCombatLockdown() then
+      self:EnableKeyboard(false)
+    else
+      self:EnableKeyboard(true)
+      self:SetPropagateKeyboardInput(true)
+    end
     for _, c in ipairs(controls) do c.refresh() end
     self.spells:SetText(knownList())
     select(self.page or 1)
