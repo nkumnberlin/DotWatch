@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: DotWatch
 ## Notes: DoT and crowd-control timers per enemy for every DoT class, driven by your own casts. Detects resists and immunes. Works in dungeons.
-## Version: 0.18.1
+## Version: 0.19
 ## Notes-deDE: DoT- und Kontroll-Timer pro Gegner für jede DoT-Klasse, gesteuert von deinen eigenen Zaubern. Erkennt Widerstände und Immunitäten. Funktioniert in Dungeons.
 ## Notes-ruRU: Таймеры DoT и контроля для каждого врага у всех классов с DoT, по вашим собственным заклинаниям. Распознаёт сопротивления и невосприимчивость. Работает в подземельях.
 ## Notes-zhCN: 按敌人显示持续伤害和控制技能计时，适用于所有持续伤害职业，由你自己的施法驱动。可识别抵抗和免疫。可在地下城中使用。
