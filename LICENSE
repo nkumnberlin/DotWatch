@@ -19,3 +19,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+Third-party notices
+
+Locale_deDE.lua, Locale_ruRU.lua and Locale_zhCN.lua are copied from Smooth
+Animated Bars 1.11.0, Copyright (c) 2026 Jordan, which ported them from
+DoesItDie 0.9.3, Copyright (c) 2026 Joe Greive, both under the MIT License.
+Their copyright and permission notice is at the top of Locale.lua. The kill
+skull's idea (the game compares the secret health) comes from the same addons.

@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.17: tooltips are read in German, Russian and Chinese too (Locale*.lua), so
+-- durations and the kill skull work on those clients.
 -- New in 0.16: spells are found by spell ID, so DotWatch works on German, Russian, Chinese ...
 -- clients (names come from the game). Enslave Demon is Subjugate Demon on Forever.
 -- New in 0.15: kill skull next to each enemy's health: bright when your running DoTs will
@@ -44,7 +46,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.16"
+local VERSION = "0.17"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -264,6 +266,7 @@ end
 -- Damage numbers in combat (UNIT_COMBAT) are secret on Forever, so ticks can't be measured:
 -- the tooltip numbers are all there is.
 local KILL = {} -- 0.15: kill skull (one local: the main chunk is at Lua's 200-local limit)
+KILL.ns = select(2, ...) -- 0.16: the addon's shared table (Locale*.lua put their readers in it)
 function KILL.parseDamage(desc)
   if type(desc) ~= "string" then return nil end
   desc = desc:gsub("\194\160", " ")
@@ -281,6 +284,23 @@ function KILL.parseDamage(desc)
     return amount * math.floor(lasts / every + 0.5)
   end
   return nil
+end
+
+-- 0.16: duration and total damage from a tooltip in any client language: the English
+-- patterns first, then Locale*.lua (German, Russian, Simplified/Traditional Chinese). Only
+-- DoTs (def.tick) get a damage number; crowd control keeps its English-only duration
+-- (other languages fall back to the duration table, which holds Forever's values).
+function KILL.readDesc(desc, def)
+  local dur = parseDuration(desc)
+  local dmg = def.tick and KILL.parseDamage(desc) or nil
+  if def.tick and (not dur or not dmg) and type(desc) == "string" then
+    local loc = KILL.ns and KILL.ns.locale
+    local total, _, ldur = nil, nil, nil
+    if loc and loc.parseDot then total, _, ldur = loc.parseDot(desc, 1) end
+    dur = dur or ldur
+    dmg = dmg or total
+  end
+  return dur, dmg
 end
 
 local function iconOf(id)
@@ -304,9 +324,9 @@ local function spellInfo(id)
   if not def then spellCache[id] = false return nil end
   if def.cc and db and db.trackCC == false then return nil end
   local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
-  local descDur = parseDuration(desc)
+  local descDur, dmg = KILL.readDesc(desc, def)
   local info = { id = id, name = def.name, shown = name, def = def, group = def.group, slot = def.slot, color = def.color,
-    icon = iconOf(id), descDur = descDur, dmg = def.tick and KILL.parseDamage(desc) or nil }
+    icon = iconOf(id), descDur = descDur, dmg = dmg }
   spellCache[id] = info
   return info
 end
@@ -655,7 +675,7 @@ local function startDot(info, guid, name, t, how)
   -- 0.15: the tooltip again, so new gear or a new rank counts (it may be unreadable in combat:
   -- then the number read earlier stays)
   if info.def.tick and C_Spell and C_Spell.GetSpellDescription then
-    local fresh = KILL.parseDamage(str(plain(C_Spell.GetSpellDescription, info.id)))
+    local _, fresh = KILL.readDesc(str(plain(C_Spell.GetSpellDescription, info.id)), info.def)
     if fresh then info.dmg = fresh end
   end
   local d = { info = info, start = t, expires = t + dur, prev = prev, dmg = info.dmg,
