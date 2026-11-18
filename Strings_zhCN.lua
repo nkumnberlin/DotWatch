@@ -247,4 +247,7 @@ ns.STRINGS.zhCN = {
   ["All your DoTs are up"] = "你的DoT全部生效",
   ["DoTs missing"] = "缺少DoT",
   ["Mini bar height"] = "迷你条高度",
+  -- 0.19.2
+  ["Mini bars up / down"] = "迷你条上下位置",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "负数向下移动，例如移到敌人施法条下方。正数向上移动。",
 }

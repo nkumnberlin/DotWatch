@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.19.1"
+local VERSION = "0.19.2"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1694,9 +1694,7 @@ local function layoutPlates(sameNameCount, LETTERS)
               o.glow:ClearAllPoints()
               if not (pcall(o.glow.SetPoint, o.glow, "TOPLEFT", o.hb, "TOPLEFT", -3, 3)
                 and pcall(o.glow.SetPoint, o.glow, "BOTTOMRIGHT", o.hb, "BOTTOMRIGHT", 3, -3)) then o.glow:ClearAllPoints() end
-              o.mb:ClearAllPoints()
-              pcall(o.mb.SetPoint, o.mb, "TOPLEFT", o.hb, "BOTTOMLEFT", 0, -2)
-              pcall(o.mb.SetPoint, o.mb, "TOPRIGHT", o.hb, "BOTTOMRIGHT", 0, -2)
+              LOOK.anchorBars(o, o.hb)
               o.cnt:ClearAllPoints()
               pcall(o.cnt.SetPoint, o.cnt, "LEFT", o.hb, "RIGHT", 26, 0)
             elseif o.glow then
@@ -1711,6 +1709,14 @@ local function layoutPlates(sameNameCount, LETTERS)
 end
 
 -- 0.19: every frame: letter color, glow, mini bars and count from the enemy's DoT state
+-- 0.19.2: mini bars under the health bar, moved up/down by the option (+ = up)
+function LOOK.anchorBars(o, hb)
+  local yy = -2 + (db.plateBarY or 0)
+  o.mb:ClearAllPoints()
+  pcall(o.mb.SetPoint, o.mb, "TOPLEFT", hb, "BOTTOMLEFT", 0, yy)
+  pcall(o.mb.SetPoint, o.mb, "TOPRIGHT", hb, "BOTTOMRIGHT", 0, yy)
+end
+
 -- paint one overlay (real plate or the options preview): t for the bars, bt for the blink
 function LOOK.paintPlate(o, rows, missing, t, fight, bt)
   local blink = 0.55 + 0.45 * math.abs(math.sin((bt or t) * 4))
@@ -3229,6 +3235,13 @@ function LOOK.buildEnemiesPage(g)
     function() return db.plateBarH or 4 end, function(v) db.plateBarH = v end)
   sl:SetPoint("TOPLEFT", 30, y)
   sl:SetWidth(180)
+  y = y - 44
+  -- 0.19.2: move the bars down (e.g. below the mob's cast bar) or up
+  sl = makeSlider(g, "Mini bars up / down", -40, 30, 1, "%d px",
+    function() return db.plateBarY or 0 end, function(v) db.plateBarY = v end)
+  sl:SetPoint("TOPLEFT", 30, y)
+  sl:SetWidth(180)
+  tip(sl, "Mini bars up / down", "Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up.")
 
   -- preview: two made-up nameplates that follow the options above
   makeSection(g, "Preview", top, COL + 16)
@@ -3266,8 +3279,6 @@ function LOOK.buildEnemiesPage(g)
     LOOK.plateParts(o)
     o.glow:SetPoint("TOPLEFT", hb, "TOPLEFT", -3, 3)
     o.glow:SetPoint("BOTTOMRIGHT", hb, "BOTTOMRIGHT", 3, -3)
-    o.mb:SetPoint("TOPLEFT", hb, "BOTTOMLEFT", 0, -2)
-    o.mb:SetPoint("TOPRIGHT", hb, "BOTTOMRIGHT", 0, -2)
     o.cnt:SetPoint("LEFT", hb, "RIGHT", 6, 0)
     p.hb, p.o = hb, o
     plates[i] = p
@@ -3308,8 +3319,9 @@ function LOOK.buildEnemiesPage(g)
           end
         end
       end
+      LOOK.anchorBars(o, hb)
       LOOK.paintPlate(o, rows, missing, t0, true, now())
-      local below = db.plateBars and #rows * ((db.plateBarH or 4) + 1) + 2 or 0
+      local below = db.plateBars and math.max(0, #rows * ((db.plateBarH or 4) + 1) + 2 - (db.plateBarY or 0)) or 0
       hb.cap:ClearAllPoints()
       hb.cap:SetPoint("TOPLEFT", hb, "BOTTOMLEFT", 0, -(below + 8))
     end
@@ -3438,7 +3450,7 @@ end
 
 local function buildOptions()
   local f = CreateFrame("Frame", "DotWatchOptions", UIParent, BACKDROP_TEMPLATE)
-  f:SetSize(700, 480)
+  f:SetSize(700, 520) -- 0.19.2: 40 px taller for the nameplate options
   f:SetPoint("CENTER")
   f:SetFrameStrata("DIALOG")
   f:SetToplevel(true)

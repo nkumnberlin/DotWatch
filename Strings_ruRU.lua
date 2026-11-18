@@ -247,4 +247,7 @@ ns.STRINGS.ruRU = {
   ["All your DoTs are up"] = "Все ваши DoT висят",
   ["DoTs missing"] = "Не хватает DoT",
   ["Mini bar height"] = "Высота мини-полос",
+  -- 0.19.2
+  ["Mini bars up / down"] = "Мини-полосы вверх / вниз",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "Минус сдвигает полосы вниз, например под полосу заклинания врага. Плюс — вверх.",
 }

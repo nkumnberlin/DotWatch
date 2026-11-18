@@ -249,4 +249,7 @@ ns.STRINGS.zhTW = {
   ["All your DoTs are up"] = "你的DoT全部生效",
   ["DoTs missing"] = "缺少DoT",
   ["Mini bar height"] = "迷你條高度",
+  -- 0.19.2
+  ["Mini bars up / down"] = "迷你條上下位置",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "負數向下移動，例如移到敵人施法條下方。正數向上移動。",
 }

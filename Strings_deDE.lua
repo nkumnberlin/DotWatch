@@ -246,4 +246,7 @@ ns.STRINGS.deDE = {
   ["All your DoTs are up"] = "Alle deine DoTs laufen",
   ["DoTs missing"] = "DoTs fehlen",
   ["Mini bar height"] = "Höhe der Mini-Balken",
+  -- 0.19.2
+  ["Mini bars up / down"] = "Mini-Balken hoch / runter",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "Minus schiebt die Balken nach unten, z. B. unter die Zauberleiste des Gegners. Plus schiebt sie nach oben.",
 }
