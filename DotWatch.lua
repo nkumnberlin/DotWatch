@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.18: interface in German, Russian and Chinese (Strings*.lua), chosen by the
+-- client language or the option General > Language.
 -- New in 0.17: tooltips are read in German, Russian and Chinese too (Locale*.lua), so
 -- durations and the kill skull work on those clients.
 -- New in 0.16: spells are found by spell ID, so DotWatch works on German, Russian, Chinese ...
@@ -46,7 +48,8 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.17"
+local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
+local VERSION = "0.18"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -623,7 +626,7 @@ local function failDot(m, d, action)
     m.dots[id] = d.prev -- failed refresh: the old DoT keeps running
     if d.prevGroup then m.dots[d.prevGroup.info.id] = d.prevGroup end
   end
-  local label = FAIL[action] or action
+  local label = L[FAIL[action] or action]
   if banished then label = label .. " (" .. LOOK.spell(banished.info) .. ")" end
   addFlash(m, LOOK.spell(d.info) .. ": " .. label, 1, 0.3, 0.3)
   if banished then
@@ -637,7 +640,7 @@ local function failDot(m, d, action)
   end
   dbg("FAIL " .. d.info.name .. " on " .. m.name .. " [" .. short(m.guid) .. "]: " .. action ..
     (banished and " (banished, not stored)" or "") .. (d.prev and " (old timer kept)" or ""))
-  if db.chat then say(string.format("|cffff5555%s %s|r on %s", LOOK.spell(d.info), label:lower(), m.hidden and "your target" or m.name)) end
+  if db.chat then say(string.format(L["|cffff5555%s %s|r on %s"], LOOK.spell(d.info), label:lower(), m.hidden and L["your target"] or m.name)) end
   if action == "IMMUNE" and not banished then
     local npc = npcID(m.guid)
     if npc then
@@ -1103,7 +1106,7 @@ anchorBg:SetAllPoints()
 anchorBg:SetColorTexture(0.3, 0.1, 0.5, 0.5)
 local anchorText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 anchorText:SetPoint("CENTER")
-anchorText:SetText("DotWatch (drag me)")
+anchorText:SetText(L["DotWatch (drag me)"])
 
 -- 0.14.2: move mode has to look like move mode. New players took the purple box for
 -- the normal look and never locked it. While unlocked: gold edge around the list and
@@ -1140,25 +1143,25 @@ end
 local lockBtn = CreateFrame("Button", nil, moveTab, "UIPanelButtonTemplate")
 lockBtn:SetSize(52, 18)
 lockBtn:SetPoint("RIGHT", -4, 0)
-lockBtn:SetText("Lock")
+lockBtn:SetText(L["Lock"])
 lockBtn:SetScript("OnClick", function()
   setLocked(true)
-  say("Window locked. Unlock it again: /dw lock, right-click the minimap button, or Options > General.")
+  say(L["Window locked. Unlock it again: /dw lock, right-click the minimap button, or Options > General."])
 end)
 local moveText = moveTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 moveText:SetPoint("LEFT", 8, 0)
 moveText:SetPoint("RIGHT", lockBtn, "LEFT", -4, 0)
 moveText:SetJustifyH("LEFT")
 moveText:SetWordWrap(false)
-moveText:SetText("Move mode: drag me")
+moveText:SetText(L["Move mode: drag me"])
 
 local function moveTip()
   -- at the cursor, owned by UIParent: the tooltip must never read our (secret) geometry
   GameTooltip:SetOwner(UIParent, "ANCHOR_CURSOR")
-  GameTooltip:AddLine("DotWatch: move mode")
-  GameTooltip:AddLine("The purple box and gold frame only show while the window is unlocked.", 1, 1, 1, true)
-  GameTooltip:AddLine("Drag it where you want it, then click Lock.", 1, 1, 1, true)
-  GameTooltip:AddLine("Locked, the list has no background and only shows up while timers run.", 0.8, 0.8, 0.8, true)
+  GameTooltip:AddLine(L["DotWatch: move mode"])
+  GameTooltip:AddLine(L["The purple box and gold frame only show while the window is unlocked."], 1, 1, 1, true)
+  GameTooltip:AddLine(L["Drag it where you want it, then click Lock."], 1, 1, 1, true)
+  GameTooltip:AddLine(L["Locked, the list has no background and only shows up while timers run."], 0.8, 0.8, 0.8, true)
   GameTooltip:Show()
 end
 moveTab:SetScript("OnEnter", moveTip)
@@ -1617,7 +1620,7 @@ local function placeHeader(m, tg, x, y, big)
   if m.mark then label = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_" .. m.mark .. ":0|t " .. label end
   if m.hidden then
     -- dungeon: the game draws the hidden name for us (like the HP %)
-    if not (m.shownName and pcall(h.SetText, h, m.shownName)) then h:SetText("Enemy " .. LETTERS:sub(m.letter, m.letter)) end
+    if not (m.shownName and pcall(h.SetText, h, m.shownName)) then h:SetText(L["Enemy"] .. " " .. LETTERS:sub(m.letter, m.letter)) end
   else
     h:SetText(label)
   end
@@ -1684,7 +1687,7 @@ local function setCell(c, r, size)
     c.icon:SetAlpha(0.35)
     c.cd:Hide()
     if r.immune then
-      c.time:SetText("|cffcc5555imm|r")
+      c.time:SetText("|cffcc5555" .. L["imm"] .. "|r")
     else
       c.time:SetText("")
     end
@@ -1789,7 +1792,7 @@ render.slim = function(list, tg, W)
         b.icon:SetAlpha(0.35)
         b.border:SetColorTexture(0.25, 0.25, 0.25, 0.3)
         b.bar:Hide()
-        b.time:SetText(r.immune and "|cffcc5555imm|r" or "")
+        b.time:SetText(r.immune and "|cffcc5555" .. L["imm"] .. "|r" or "")
       end
       b:ClearAllPoints()
       b:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", 0, -y)
@@ -1889,7 +1892,7 @@ render.table = function(list, tg, W)
         c.line:SetColorTexture(cc[1], cc[2], cc[3], 1)
       else
         c.dot = nil
-        c.time:SetText(r and r.immune and "|cffcc5555imm|r" or "|cff5c5c5c–|r")
+        c.time:SetText(r and r.immune and "|cffcc5555" .. L["imm"] .. "|r" or "|cff5c5c5c–|r")
         c.line:SetColorTexture(0.35, 0.35, 0.35, 0.35)
       end
       c:ClearAllPoints()
@@ -1932,7 +1935,7 @@ render.focus = function(list, tg, W)
       y = y + 4
       n.x = n.x + 1
       local t = getText(cv, n.x)
-      t:SetText("Others")
+      t:SetText(L["Others"])
       t:ClearAllPoints()
       t:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", 0, -y)
       t:Show()
@@ -1955,7 +1958,7 @@ render.focus = function(list, tg, W)
         mi.dot = nil
         mi.icon:SetDesaturated(true)
         mi.icon:SetAlpha(0.35)
-        mi.time:SetText(r.immune and "|cffcc5555imm|r" or "|cff5c5c5c–|r")
+        mi.time:SetText(r.immune and "|cffcc5555" .. L["imm"] .. "|r" or "|cff5c5c5c–|r")
       end
       mi:ClearAllPoints()
       mi:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", x, -y)
@@ -2018,7 +2021,7 @@ end
 
 local function timeText(fs, d, left)
   if d.lost then
-    fs:SetText("lost?")
+    fs:SetText(L["lost?"])
     fs:SetTextColor(1, 0.6, 0.2)
   else
     fs:SetText(fmtTime(left))
@@ -2336,7 +2339,11 @@ ev:SetScript("OnEvent", function(_, event, ...)
     applyPos() -- broken (secret) positions from 0.10-0.12 fall back to the default spot
     dirty = true
     dbg("LOADED " .. VERSION)
-    say(VERSION .. " loaded. /dw for options, /dw help for commands.")
+    -- 0.18: texts made while loading used the client language; the saved one is known now
+    anchorText:SetText(L["DotWatch (drag me)"])
+    lockBtn:SetText(L["Lock"])
+    moveText:SetText(L["Move mode: drag me"])
+    say(string.format(L["%s loaded. /dw for options, /dw help for commands."], VERSION))
     return
   end
   if not db then return end
@@ -2393,9 +2400,9 @@ ev:SetScript("OnEvent", function(_, event, ...)
     end
     if db.summary and fight.casts > 0 then
       local secs = math.floor(now() - fight.start + 0.5)
-      say(string.format("Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s",
+      say(string.format(L["Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s"],
         math.floor(secs / 60), secs % 60, fight.casts, fight.refreshes, fight.resisted, fight.immune,
-        fight.lost > 0 and (", " .. fight.lost .. " lost?") or ""))
+        fight.lost > 0 and string.format(L[", %d lost?"], fight.lost) or ""))
     end
     dirty = true
   elseif event == "PLAYER_LOGIN" then
@@ -2428,8 +2435,8 @@ local function testBars()
       m.dots[info.id] = { info = info, start = t - s[4][i], expires = t - s[4][i] + dur, confirmed = true }
     end
   end
-  addFlash(mobs["Test-0-0-0-0-2-CCC"], s2 .. ": Resisted", 1, 0.3, 0.3)
-  say("Test timers shown. They run out on their own or end when you leave combat.")
+  addFlash(mobs["Test-0-0-0-0-2-CCC"], LOOK.spell(s2) .. ": " .. L["Resisted"], 1, 0.3, 0.3)
+  say(L["Test timers shown. They run out on their own or end when you leave combat."])
 end
 
 ---------------------------------------------------------------------------
@@ -2450,8 +2457,8 @@ end
 local function tip(widget, title, text)
   widget:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title, 1, 0.82, 0)
-    if text then GameTooltip:AddLine(text, 1, 1, 1, true) end
+    GameTooltip:SetText(L[title], 1, 0.82, 0)
+    if text then GameTooltip:AddLine(L[text], 1, 1, 1, true) end
     GameTooltip:Show()
   end)
   widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2471,12 +2478,13 @@ local function makeButton(parent, label, width, onClick)
     fs:SetPoint("CENTER")
     b:SetFontString(fs)
   end
-  b:SetText(label)
+  b:SetText(L[label])
   b:SetScript("OnClick", onClick)
   return b
 end
 
 local function makeCheck(parent, label, help, get, set)
+  label, help = L[label], help and L[help]
   local cb = CreateFrame("CheckButton", nil, parent)
   cb:SetSize(26, 26)
   cb:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
@@ -2492,12 +2500,15 @@ local function makeCheck(parent, label, help, get, set)
     dirty = true
   end)
   tip(cb, label, help)
+  cb.isCheck = true
   cb.refresh = function() cb:SetChecked(get() and true or false) end
   controls[#controls + 1] = cb
   return cb
 end
 
 local function makeSlider(parent, label, minV, maxV, step, fmt, get, set)
+  label = L[label]
+  if type(fmt) == "string" then fmt = L[fmt] end
   local show = type(fmt) == "function" and fmt or function(v) return string.format(fmt, v) end
   local s = CreateFrame("Slider", nil, parent, BACKDROP_TEMPLATE)
   s:SetOrientation("HORIZONTAL")
@@ -2547,7 +2558,7 @@ end
 local function makeSection(parent, label, y, x, lineEnd)
   local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x or 24, y)
-  fs:SetText(label)
+  fs:SetText(L[label])
   local line = parent:CreateTexture(nil, "ARTWORK")
   line:SetColorTexture(1, 0.82, 0, 0.25)
   line:SetHeight(1)
@@ -2581,13 +2592,14 @@ local function knownList()
   for _, s in ipairs(SPELLS) do
     if known[s.name] then names[#names + 1] = LOOK.spell(s) end
   end
-  if #names == 0 then return "|cff888888nothing found yet|r" end
+  if #names == 0 then return "|cff888888" .. L["nothing found yet"] .. "|r" end
   local text = table.concat(names, ", ")
-  if myClass() == "WARLOCK" and not known["Siphon Life"] then text = text .. "  |cff888888(no Siphon Life)|r" end
+  if myClass() == "WARLOCK" and not known["Siphon Life"] then text = text .. "  |cff888888" .. string.format(L["(no %s)"], LOOK.spell("Siphon Life")) .. "|r" end
   return text
 end
 
 local function makeRadio(parent, label, help, value, get, set)
+  label, help = L[label], help and L[help]
   local rb = CreateFrame("CheckButton", nil, parent)
   rb:SetSize(16, 16)
   rb:SetNormalTexture("Interface\\Buttons\\UI-RadioButton")
@@ -2644,7 +2656,7 @@ local function buildSample()
   local list = {
     mob("preview-A", "Slave Worker", 1, 72, 1, { { s1, len(s1) * 0.63, len(s1) }, { s2, len(s2) * 0.8, len(s2) } }),
     mob("preview-B", "Slave Worker", 2, 45, 2, { { s1, len(s1) * 0.23, len(s1) }, { s3, len(s3) * 0.64, len(s3) }, { s2, 2.1, len(s2) } }),
-    mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { s2, len(s2) * 0.58, len(s2) } }, s3 .. ": Resisted"),
+    mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { s2, len(s2) * 0.58, len(s2) } }, LOOK.spell(s3) .. ": " .. L["Resisted"]),
   }
   list[3].fakeKill = true -- 0.15: the preview shows one enemy your DoTs will finish
   if known["Siphon Life"] and DEF_BY_NAME["Siphon Life"] then
@@ -2658,8 +2670,9 @@ end
 local function radioRow(parent, label, x, y, items, get, set)
   local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   fs:SetPoint("TOPLEFT", x, y - 2)
-  fs:SetText(label)
-  local rx = x + 96
+  fs:SetText(L[label])
+  -- 0.18: longer labels (German, Russian) push the buttons right instead of under the label
+  local rx = x + math.max(96, math.floor(fs:GetStringWidth() + 12))
   for _, it in ipairs(items) do
     local rb = makeRadio(parent, it[2], it[3], it[1], get, set)
     rb:SetPoint("TOPLEFT", rx, y)
@@ -2716,12 +2729,12 @@ local function buildLookPage(pg, COL)
   local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
   local classLabel = className or "?"
   if cc then classLabel = string.format("|cff%02x%02x%02x%s|r", cc.r * 255, cc.g * 255, cc.b * 255, classLabel) end
-  makeSection(pg, "DoT colors: " .. classLabel, ty - 10, 24, COL)
+  makeSection(pg, string.format(L["DoT colors: %s"], classLabel), ty - 10, 24, COL)
   local noClass = pg:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   noClass:SetPoint("TOPLEFT", 28, ty - 34)
   noClass:SetWidth(200)
   noClass:SetJustifyH("LEFT")
-  noClass:SetText((className or "This class") .. " has no DoT list yet. It will come in a later version.")
+  noClass:SetText(string.format(L["%s has no DoT list yet. It will come in a later version."], className or L["This class"]))
   noClass:Hide()
   ty = ty - 34
   local swatches = {}
@@ -2807,13 +2820,13 @@ local function buildTimersPage(pg)
   -- sound choice: < name > and a test button, list goes from soft to loud
   local sl = pg:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   sl:SetPoint("TOPLEFT", 32, y - 5)
-  sl:SetText("Sound:")
+  sl:SetText(L["Sound:"])
   local name = pg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   local pos = pg:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   local function show()
     local i = soundIndex()
-    name:SetText(SOUNDS[i].label)
-    pos:SetText(i .. " / " .. #SOUNDS .. "  (soft > loud)")
+    name:SetText(L[SOUNDS[i].label])
+    pos:SetText(i .. " / " .. #SOUNDS .. "  " .. L["(soft > loud)"])
   end
   local function step(dir)
     local i = soundIndex() + dir
@@ -2850,7 +2863,12 @@ local function buildTimersPage(pg)
 
   makeSection(pg, "Control", y)
   y = y - 22
-  makeCheck(pg, "Crowd-control timers (Fear, Banish, Polymorph, Mind Soothe ...)", "Shown while active, below the DoTs of that enemy.",
+  -- 0.18: the examples are your own class's control spells, named by the game
+  local ccNames = {}
+  for _, sp in ipairs(SPELLS) do
+    if isMine(sp) and sp.cc and #ccNames < 3 then ccNames[#ccNames + 1] = LOOK.spell(sp) end
+  end
+  makeCheck(pg, string.format(L["Crowd-control timers (%s ...)"], table.concat(ccNames, ", ")), "Shown while active, below the DoTs of that enemy.",
     function() return db.trackCC ~= false end, function(v) db.trackCC = v wipe(spellCache) end):SetPoint("TOPLEFT", 26, y)
   y = y - 36
 
@@ -2913,13 +2931,13 @@ local function buildStatsPage(pg)
       for _, name in ipairs(names) do
         local sp = r.e.s[name]
         local resisted = sp.c > 0 and math.floor(sp.r / sp.c * 100 + 0.5) or 0
-        local parts = { string.format("%d cast%s", sp.c, sp.c == 1 and "" or "s") }
-        if sp.r > 0 then parts[#parts + 1] = string.format("|cffff7755%d resisted (%d%%)|r", sp.r, resisted) end
-        if sp.i > 0 then parts[#parts + 1] = string.format("|cffcc5555%d immune|r", sp.i) end
+        local parts = { string.format(sp.c == 1 and L["%d cast"] or L["%d casts"], sp.c) }
+        if sp.r > 0 then parts[#parts + 1] = "|cffff7755" .. string.format(L["%d resisted (%d%%)"], sp.r, resisted) .. "|r" end
+        if sp.i > 0 then parts[#parts + 1] = "|cffcc5555" .. string.format(L["%d immune"], sp.i) .. "|r" end
         lines[#lines + 1] = "    " .. LOOK.spell(name) .. ": " .. table.concat(parts, ", ")
       end
     end
-    if #lines == 0 then lines[1] = "|cff888888Nothing recorded yet. Fight something!|r" end
+    if #lines == 0 then lines[1] = "|cff888888" .. L["Nothing recorded yet. Fight something!"] .. "|r" end
     text:SetText(table.concat(lines, "\n"))
     content:SetHeight(math.max((text:GetStringHeight() or 0) + 10, 10))
   end
@@ -2936,7 +2954,7 @@ local function buildStatsPage(pg)
   reset:SetPoint("BOTTOMLEFT", 24, 6)
   ask = pg:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   ask:SetPoint("BOTTOMLEFT", 26, 11)
-  ask:SetText("Delete all statistics and known immunities?")
+  ask:SetText(L["Delete all statistics and known immunities?"])
   yes = makeButton(pg, YES or "Yes", 60, function()
     wipe(db.stats) wipe(db.immune) fill() dirty = true
     setAsking(false)
@@ -2946,6 +2964,27 @@ local function buildStatsPage(pg)
   no:SetPoint("LEFT", yes, "RIGHT", 4, 0)
   setAsking(false)
   pg:HookScript("OnHide", function() setAsking(false) end)
+end
+
+-- 0.18: translated checkbox labels can be longer than the column. A label with another
+-- checkbox to its right stops before it (one line, cut with "..."); the tooltip has it all.
+function LOOK.fitChecks(pageWidth)
+  local spots = {}
+  for _, c in ipairs(controls) do
+    if c.isCheck then
+      local _, rel, _, x, y = c:GetPoint(1)
+      if type(x) == "number" and type(y) == "number" then spots[#spots + 1] = { c = c, rel = rel, x = x, y = y } end
+    end
+  end
+  for _, a in ipairs(spots) do
+    local limit = pageWidth - a.x - 50
+    for _, b in ipairs(spots) do
+      if b ~= a and b.rel == a.rel and math.abs(b.y - a.y) < 4 and b.x > a.x then limit = math.min(limit, b.x - a.x - 36) end
+    end
+    a.c.text:SetWordWrap(false)
+    if a.c.text:GetStringWidth() > limit then a.c.text:SetWidth(limit) end
+    a.c:SetHitRectInsets(0, -(math.min(a.c.text:GetStringWidth(), limit) + 6), 0, 0)
+  end
 end
 
 local function buildOptions()
@@ -3020,7 +3059,7 @@ local function buildOptions()
 
   local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   sub:SetPoint("TOP", 0, -30)
-  sub:SetText("Your damage over time, per enemy.  |cff888888v" .. VERSION .. "|r")
+  sub:SetText(L["Your damage over time, per enemy."] .. "  |cff888888v" .. VERSION .. "|r")
 
   -- pages on the right, chosen in the list on the left
   local NAV_W = 160
@@ -3077,6 +3116,24 @@ local function buildOptions()
   y = y - 26
   makeCheck(g, "Minimap button", "Show the eye at the minimap. /dw opens this window either way.",
     function() return not db.minimap.hide end, function(v) db.minimap.hide = not v applySettings() end):SetPoint("TOPLEFT", 26, y)
+  -- 0.18: interface language (Strings*.lua); a click goes to the next one, /reload applies it
+  local langs = KILL.ns.LANGUAGES
+  local langLabel = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  langLabel:SetPoint("TOPLEFT", 254, y - 6)
+  langLabel:SetText(L["Language:"])
+  local function langIndex()
+    for i, l in ipairs(langs) do if l.tag == (db.lang or "auto") then return i end end
+    return 1
+  end
+  local langBtn
+  langBtn = makeButton(g, langs[langIndex()].label, 190, function()
+    local i = langIndex() % #langs + 1
+    db.lang = langs[i].tag
+    langBtn:SetText(L[langs[i].label])
+    say(string.format(L["Language: %s. Type /reload to use it."], L[langs[i].label]))
+  end)
+  langBtn:SetPoint("LEFT", langLabel, "RIGHT", 6, 0)
+  tip(langBtn, "Language", "Language of DotWatch's own texts. Spell names always come from the game. Russian and Chinese need a game client whose font has those letters. Click for the next language, then /reload.")
   y = y - 36
 
   makeSection(g, "Spells found", y)
@@ -3224,7 +3281,7 @@ local function buildOptions()
     it:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     it.label = it:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     it.label:SetPoint("LEFT", 10, 0)
-    it.label:SetText(label)
+    it.label:SetText(L[label])
     it:SetScript("OnClick", function() select(i) end)
     navItems[i] = it
   end
@@ -3253,6 +3310,7 @@ local function buildOptions()
     select(self.page or 1)
   end)
   f:Hide()
+  LOOK.fitChecks(700 - 160)
   return f
 end
 
@@ -3277,13 +3335,12 @@ registerSettings = function()
   title:SetText("DotWatch")
   local ver = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   ver:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
-  ver:SetText("Version " .. VERSION)
+  ver:SetText(string.format(L["Version %s"], VERSION))
   local text = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   text:SetPoint("TOPLEFT", logo, "BOTTOMLEFT", 0, -16)
   text:SetWidth(520)
   text:SetJustifyH("LEFT")
-  text:SetText("DoT timers for every enemy you dot. All settings are in DotWatch's own window "
-    .. "(also: /dw or the eye on the minimap).")
+  text:SetText(L["DoT timers for every enemy you dot. All settings are in DotWatch's own window (also: /dw or the eye on the minimap)."])
   local open = makeButton(p, "Open DotWatch options", 200, function()
     opt = opt or buildOptions()
     opt:Show()
@@ -3341,7 +3398,7 @@ local function createMinimapButton()
   mm:SetScript("OnClick", function(_, button)
     if button == "RightButton" then
       setLocked(not db.locked)
-      say(db.locked and "Window locked." or "Window unlocked (move mode): drag it, then click Lock on its tab.")
+      say(db.locked and L["Window locked."] or L["Window unlocked (move mode): drag it, then click Lock on its tab."])
     else
       toggleOptions()
     end
@@ -3359,9 +3416,9 @@ local function createMinimapButton()
   mm:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:SetText("DotWatch", 1, 0.82, 0)
-    GameTooltip:AddLine("Left-click: options", 1, 1, 1)
-    GameTooltip:AddLine("Right-click: lock / unlock the window", 1, 1, 1)
-    GameTooltip:AddLine("Drag: move this button", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine(L["Left-click: options"], 1, 1, 1)
+    GameTooltip:AddLine(L["Right-click: lock / unlock the window"], 1, 1, 1)
+    GameTooltip:AddLine(L["Drag: move this button"], 0.6, 0.6, 0.6)
     GameTooltip:Show()
   end)
   mm:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3403,6 +3460,7 @@ initSettings = function()
   db.grow = db.grow or "middle"
   db.ooc = db.ooc or "show"
   db.plateSide = db.plateSide or "left"
+  db.lang = db.lang or "auto"
   LOOK.inCombat = UnitAffectingCombat and plain(UnitAffectingCombat, "player") == true or false
   applySettings()
 end
@@ -3420,71 +3478,71 @@ SlashCmdList.DOTWATCH = function(msg)
     if STYLE_NAMES[st] then
       db.style = st
       dirty = true
-      say("Style: " .. STYLE_NAMES[st])
+      say(L["Style:"] .. " " .. L[STYLE_NAMES[st]])
     else
-      say("Styles: " .. table.concat(STYLES, ", ") .. "  (e.g. /dw style icons)")
+      say(L["Styles:"] .. " " .. table.concat(STYLES, ", ") .. "  " .. L["(e.g. /dw style icons)"])
     end
   elseif cmd == "lock" then
     setLocked(not db.locked)
-    say(db.locked and "Locked. The window only shows up when timers run." or "Unlocked (move mode): drag the window, then click Lock on its tab.")
+    say(db.locked and L["Locked. The window only shows up when timers run."] or L["Unlocked (move mode): drag the window, then click Lock on its tab."])
   elseif cmd == "reset" then
     db.pos = nil
     applyPos()
-    say("Position reset.")
+    say(L["Position reset."])
   elseif cmd == "chat" then
     db.chat = not db.chat
-    say("Resist/immune chat messages " .. (db.chat and "on" or "off"))
+    say(db.chat and L["Resist/immune chat messages on"] or L["Resist/immune chat messages off"])
   elseif cmd == "test" then
     testBars()
   elseif cmd == "clear" then
     wipe(mobs)
-    say("Timers cleared.")
+    say(L["Timers cleared."])
   elseif cmd == "spells" then
     scanSpellbook("command")
-    say("Spellbook read via " .. bookMethod .. ".")
+    say(string.format(L["Spellbook read via %s."], bookMethod))
     for _, s in ipairs(SPELLS) do
       if known[s.name] then say("  " .. LOOK.spell(s) .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")) end
     end
-    if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  Siphon Life: not known") end
+    if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  " .. string.format(L["%s: not known"], LOOK.spell("Siphon Life"))) end
   elseif cmd == "learned" then
     local any = false
     for id, dur in pairs(db.learned) do
       any = true
       local info = spellInfo(id)
-      say(string.format("%s (%d): %s sec", info and LOOK.spell(info) or "?", id, tostring(dur)))
+      say(string.format(L["%s (%d): %s sec"], info and LOOK.spell(info) or "?", id, tostring(dur)))
     end
-    if not any then say("No durations learned yet (happens out of combat).") end
+    if not any then say(L["No durations learned yet (happens out of combat)."]) end
   elseif cmd == "plates" then
     db.plates = not db.plates
-    say("Nameplate letters " .. (db.plates and "on" or "off"))
+    say(db.plates and L["Nameplate letters on"] or L["Nameplate letters off"])
   elseif cmd == "platedots" then
     db.plateDots = not db.plateDots
-    say("DoT icons on nameplates " .. (db.plateDots and "on" or "off") .. " (the letter stays)")
+    say(db.plateDots and L["DoT icons on nameplates on (the letter stays)"] or L["DoT icons on nameplates off (the letter stays)"])
   elseif cmd == "platey" then
     local y = tonumber((msg or ""):match("^%S+%s+(%-?%d+)"))
     if y then
       db.plateY = y
-      say("Nameplate letters now " .. y .. " px above the plate.")
+      say(string.format(L["Nameplate letters now %d px above the plate."], y))
     else
-      say("Usage: /dw platey 10  (pixels above the nameplate, can be negative)")
+      say(L["Usage: /dw platey 10  (pixels above the nameplate, can be negative)"])
     end
   elseif cmd == "debug" then
     db.debugChat = not db.debugChat
-    say("Debug lines in chat " .. (db.debugChat and "on" or "off") .. ". They are always saved on /reload.")
+    say(db.debugChat and L["Debug lines in chat on. They are always saved on /reload."] or L["Debug lines in chat off. They are always saved on /reload."])
   else
-    say("/dw - options window")
-    say("/dw style <bars|slim|icons|table|focus> - display style")
-    say("/dw lock - lock/unlock the window (unlocked = drag it)")
-    say("/dw test - show sample timers")
-    say("/dw spells - show which DoTs were found in your spellbook")
-    say("/dw plates - letter on nameplates on/off")
-    say("/dw platedots - also show DoT icons on nameplates on/off")
-    say("/dw platey <px> - move the nameplate icons up/down")
-    say("/dw chat - resist/immune messages in chat on/off")
-    say("/dw debug - show debug lines in chat on/off")
-    say("/dw reset - reset the window position")
-    say("/dw clear - remove all timers")
-    say("/dw learned - show durations learned from real aura data")
+    say(L["/dw - options window"])
+    say(L["/dw style <bars|slim|icons|table|focus> - display style"])
+    say(L["/dw lock - lock/unlock the window (unlocked = drag it)"])
+    say(L["/dw test - show sample timers"])
+    say(L["/dw spells - show which DoTs were found in your spellbook"])
+    say(L["/dw plates - letter on nameplates on/off"])
+    say(L["/dw platedots - also show DoT icons on nameplates on/off"])
+    say(L["/dw platey <px> - move the nameplate icons up/down"])
+    say(L["/dw chat - resist/immune messages in chat on/off"])
+    say(L["/dw debug - show debug lines in chat on/off"])
+    say(L["/dw reset - reset the window position"])
+    say(L["/dw clear - remove all timers"])
+    say(L["/dw learned - show durations learned from real aura data"])
   end
   dirty = true
 end

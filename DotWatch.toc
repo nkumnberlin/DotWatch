@@ -1,11 +1,16 @@
 ## Interface: 16001
 ## Title: DotWatch
 ## Notes: DoT and crowd-control timers per enemy for every DoT class, driven by your own casts. Detects resists and immunes. Works in dungeons.
-## Version: 0.17
+## Version: 0.18
 ## X-License: MIT
 ## X-Website: https://github.com/nkumnberlin/DotWatch
 ## SavedVariables: DotWatchDB
 
+Strings.lua
+Strings_deDE.lua
+Strings_ruRU.lua
+Strings_zhCN.lua
+Strings_zhTW.lua
 Locale.lua
 Locale_deDE.lua
 Locale_ruRU.lua
