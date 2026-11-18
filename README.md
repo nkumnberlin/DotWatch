@@ -13,7 +13,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 
   | Class | DoTs (fixed rows) | Crowd control (shown while active) |
   |---|---|---|
-  | Warlock | Corruption, Immolate, Siphon Life, Unstable Affliction, banes and curses | Fear, Banish, Enslave Demon, Death Coil |
+  | Warlock | Corruption, Immolate, Siphon Life, Unstable Affliction, banes and curses | Fear, Banish, Subjugate Demon, Death Coil |
   | Priest | Shadow Word: Pain, Devouring Plague, Holy Fire | Shackle Undead, Chastise, Silence, Mind Soothe |
   | Druid | Moonfire, Insect Swarm, Rake, Lacerate | Entangling Roots, Hibernate, Bash, Pounce, Feral Charge |
   | Hunter | Serpent / Viper Sting, Lacerate, Immolation and Explosive Trap | Freezing Trap, Scare Beast, Scatter Shot, Counterattack |
@@ -37,9 +37,24 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop (not while the enemy is banished).
 - **Look options**: font size, bar texture, a color per DoT (for your class), window size, growth direction, fading out of combat.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
-- **Kill skull** next to each enemy's health: bright when the damage your running DoTs still deal will finish it, dim when not.
-- **Languages**: works on English, German, Russian and Chinese (simplified and traditional) clients: spells are found by spell ID and tooltips are read in those languages. The interface is in English, German, Russian and Chinese too: it follows the client language, or choose one under General › Language (or `/dw lang`), then `/reload`. Russian and Chinese texts are machine-assisted and not yet checked by native speakers; corrections are welcome.
+- **Kill skull** next to each enemy's health: bright when the damage your running DoTs still deal (from their tooltips) will finish it, dim when not, so you know whether to refresh or keep casting. Option on the Timers page.
+- **Languages**: English, German, Russian and Chinese (simplified and traditional) clients and interface, see [Languages](#languages).
 - **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch.
+
+## Languages
+
+| Language | Spells recognized | Tooltips read (durations, kill skull) | Interface |
+|---|---|---|---|
+| English | yes | yes | yes |
+| German (deDE) | yes | yes (Classic Era wording, not yet checked on Forever) | yes |
+| Russian (ruRU) | yes | yes | yes (not yet checked by a native speaker) |
+| Chinese, simplified (zhCN) | yes | yes | yes (not yet checked by a native speaker) |
+| Chinese, traditional (zhTW) | yes | yes | yes (not yet checked by a native speaker) |
+
+- Spells are found by spell ID, so their names always come from the game in its own language. Other client languages (French, Spanish, Korean, …) work too, with an English interface. Crowd-control durations come from DotWatch's own table there.
+- The interface follows the game's language. To choose another one: Options › General › Language, or `/dw lang de` (or `en`, `ru`, `zhCN`, `zhTW`), then `/reload`. `/dw lang auto` goes back to the game's language.
+- Russian and Chinese need a game client whose font has those letters. If you pick one and see only boxes, type `/dw lang auto` and `/reload` (DotWatch reminds you of this in English at every login).
+- Translations are machine-assisted. Corrections from native speakers are very welcome in the issues.
 
 ## Install
 
@@ -60,8 +75,15 @@ Then start the game or type `/reload`.
 | `/dw lock` | Lock or unlock the window (unlocked = move mode, drag it) |
 | `/dw test` | Show sample timers, e.g. to position the window |
 | `/dw spells` | Show the spells found in your spellbook |
+| `/dw plates` | Letters on the nameplates of same-named enemies on/off |
+| `/dw platedots` | DoT icons on nameplates on/off |
+| `/dw platey <px>` | Move the nameplate icons up or down (can be negative) |
+| `/dw chat` | Resist/immune messages in chat on/off |
+| `/dw debug` | Debug lines in chat on/off (the debug log is saved either way) |
 | `/dw reset` | Move the window back to its default spot |
-| `/dw lang <auto\|en\|de\|ru\|zhCN\|zhTW>` | Interface language, applied after `/reload`. `/dw lang auto` goes back to the game's language (e.g. if a chosen one can't be read) |
+| `/dw clear` | Remove all timers |
+| `/dw learned` | Show the DoT durations learned from real debuffs |
+| `/dw lang <auto\|en\|de\|ru\|zhCN\|zhTW>` | Interface language, applied after `/reload` |
 | `/dw help` | List all commands |
 
 ## How it works
@@ -70,6 +92,8 @@ Then start the game or type `/reload`.
 - **Dungeons**: names and GUIDs are secret there, but `UnitIsUnit` and nameplate tokens stay readable, so an enemy is known by its nameplate from the moment it appears until it disappears. The game draws the hidden name for us.
 - **Resists**: when a DoT fails, the game sends `UNIT_COMBAT` with MISS, RESIST or IMMUNE on that enemy in the same frame as the successful cast. If no aura change arrives in that frame, the timer is cancelled.
 - **Out of combat** the real debuffs are readable, so DotWatch corrects its timers and learns the exact DoT durations (not crowd control: diminishing returns would shorten them).
+- **Kill skull**: Forever keeps enemy health secret from addons, so DotWatch never compares it in Lua. A hidden status bar gets the enemy's health as its range and the damage your running DoTs still deal (read from their tooltips, refreshed on every cast) as its value. The bright skull only slides into view when the damage reaches the health, so the game does the comparison. The idea comes from DoesItDie and Smooth Animated Bars (MIT).
+- **Languages**: every spell has its spell ID; the game names it in its own language, and that name is matched against casts, the spellbook and auras. Saved settings (colors, statistics, immunities) stay keyed by the English name, so they survive a language change.
 - **Banished enemies** are immune to everything; an "Immune" there is not stored as an immunity of that enemy type.
 - **Secret values**: the window shows game-drawn values (health), so the game also keeps the window's own position secret. DotWatch keeps its own position numbers and drags the window itself.
 - **No click-to-cast**: Forever lets an addon button reach only your current target (macro conditionals don't see nameplate units), so the target bar was removed in 0.9.
@@ -81,6 +105,7 @@ Then start the game or type `/reload`.
 - In dungeons, an enemy whose nameplate disappears can't be recognized again; it gets a new row next time. No statistics there.
 - Freezing Trap starts on the first new debuff an enemy gets after the trap was placed; another player's debuff at that moment can set it off in DotWatch.
 - Classes other than Warlock are not much tested in game yet.
+- The kill skull counts only your own DoTs, from their tooltip numbers: crits, partial resists, other players and your pet aren't counted. It needs the enemy as target or with a nameplate.
 - On German clients the tooltip wording (kill skull damage, DoT durations) is from Classic Era and not yet checked on Forever. Crowd-control durations on non-English clients come from DotWatch's duration table.
 - Russian and Chinese interface texts need a game client whose font has those letters.
 
