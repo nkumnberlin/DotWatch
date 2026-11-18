@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.14.2: move mode is obvious (gold edge, tab with "Move mode" + Lock button,
+-- tooltip); new players took the purple unlocked box for the normal look.
 -- New in 0.14.1: bug fixes from the code review (Table: own column per curse/control
 -- spell; no red blink / "lost?" / stored immunities on banished enemies; options window
 -- opaque; plate letter left of the health bar; see the changelog in the project doc).
@@ -37,7 +39,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.14.1"
+local VERSION = "0.14.2"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -987,7 +989,93 @@ anchorBg:SetAllPoints()
 anchorBg:SetColorTexture(0.3, 0.1, 0.5, 0.5)
 local anchorText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 anchorText:SetPoint("CENTER")
-anchorText:SetText("DotWatch (drag me, /dw lock)")
+anchorText:SetText("DotWatch (drag me)")
+
+-- 0.14.2: move mode has to look like move mode. New players took the purple box for
+-- the normal look and never locked it. While unlocked: gold edge around the list and
+-- a tab on it ("Move mode: drag me" + Lock button). Nothing here reads the
+-- window's (secret) geometry; the tab only anchors to it.
+local function setLocked(v)
+  db.locked = v and true or false
+  dirty = true
+  if LOOK.refreshControls then LOOK.refreshControls() end
+end
+LOOK.setLocked = setLocked
+
+local moveEdge = {}
+for i, p in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, -1 },
+                     { "TOPLEFT", "BOTTOMLEFT", -1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+  local e = frame:CreateTexture(nil, "BORDER")
+  e:SetColorTexture(1, 0.82, 0, 0.9)
+  e:SetPoint(p[1], frame, p[1], p[3], p[4])
+  e:SetPoint(p[2], frame, p[2], p[3], p[4])
+  if i <= 2 then e:SetHeight(1) else e:SetWidth(1) end
+  moveEdge[i] = e
+end
+
+local moveTab = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+moveTab:SetHeight(24)
+moveTab:EnableMouse(true)
+if moveTab.SetBackdrop then
+  moveTab:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+  moveTab:SetBackdropColor(0.08, 0.06, 0.04, 0.95)
+  moveTab:SetBackdropBorderColor(1, 0.82, 0)
+end
+local lockBtn = CreateFrame("Button", nil, moveTab, "UIPanelButtonTemplate")
+lockBtn:SetSize(52, 18)
+lockBtn:SetPoint("RIGHT", -4, 0)
+lockBtn:SetText("Lock")
+lockBtn:SetScript("OnClick", function()
+  setLocked(true)
+  say("Window locked. Unlock it again: /dw lock, right-click the minimap button, or Options > General.")
+end)
+local moveText = moveTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+moveText:SetPoint("LEFT", 8, 0)
+moveText:SetPoint("RIGHT", lockBtn, "LEFT", -4, 0)
+moveText:SetJustifyH("LEFT")
+moveText:SetWordWrap(false)
+moveText:SetText("Move mode: drag me")
+
+local function moveTip()
+  -- at the cursor, owned by UIParent: the tooltip must never read our (secret) geometry
+  GameTooltip:SetOwner(UIParent, "ANCHOR_CURSOR")
+  GameTooltip:AddLine("DotWatch: move mode")
+  GameTooltip:AddLine("The purple box and gold frame only show while the window is unlocked.", 1, 1, 1, true)
+  GameTooltip:AddLine("Drag it where you want it, then click Lock.", 1, 1, 1, true)
+  GameTooltip:AddLine("Locked, the list has no background and only shows up while timers run.", 0.8, 0.8, 0.8, true)
+  GameTooltip:Show()
+end
+moveTab:SetScript("OnEnter", moveTip)
+moveTab:SetScript("OnLeave", function() GameTooltip:Hide() end)
+frame:SetScript("OnEnter", function() if not db.locked then moveTip() end end)
+frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+-- dragging the tab moves the window too
+moveTab:SetScript("OnMouseDown", function(_, button) frame:GetScript("OnMouseDown")(frame, button) end)
+moveTab:SetScript("OnMouseUp", function() frame:GetScript("OnMouseUp")(frame) end)
+
+-- the tab sits above the list, or below it when the list is at the top of the screen
+-- (worked out from our own position numbers, never from the window's geometry)
+local function placeMoveTab()
+  local _, uh = uiSize()
+  local s = frameScale()
+  local pos = db.pos
+  local top
+  if type(pos) == "table" and type(pos[4]) == "number" then
+    if pos[1] == "TOPLEFT" then top = pos[4]
+    elseif pos[1] == "BOTTOMLEFT" then top = pos[4] + frameH
+    else top = pos[4] + frameH / 2 end
+  end
+  moveTab:ClearAllPoints()
+  if top and (top + 26) * s > uh then
+    moveTab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
+    moveTab:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -2)
+  else
+    moveTab:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+    moveTab:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+  end
+end
 
 -- A "canvas" holds one set of widget pools. The real window has one, the
 -- preview in the options window has another; both are drawn by the same code.
@@ -1896,9 +1984,16 @@ local function layout()
   anchorBg:SetShown(not db.locked)
   anchorText:SetShown(not db.locked and empty)
   frame:EnableMouse(not db.locked)
-  local newW, newH = math.max(w, 160), math.max(h, ROW_H)
+  local newW, newH = math.max(w, db.locked and 160 or 180), math.max(h, ROW_H)
   frame:SetSize(newW, newH)
   frameW, frameH = newW, newH
+  for _, e in ipairs(moveEdge) do e:SetShown(not db.locked) end
+  if db.locked then
+    moveTab:Hide()
+  else
+    placeMoveTab()
+    moveTab:Show()
+  end
   local ooc = not LOOK.inCombat and db.locked
   frame:SetShown((not empty or not db.locked) and not (ooc and db.ooc == "hide"))
   frame:SetAlpha(ooc and db.ooc == "fade" and 0.4 or 1)
@@ -2169,6 +2264,7 @@ end
 local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 local opt -- the options frame
 local controls = {}
+function LOOK.refreshControls() for _, c in ipairs(controls) do c.refresh() end end
 
 local function tryTemplate(kind, parent, template)
   local ok, f = pcall(CreateFrame, kind, nil, parent, template)
@@ -2763,7 +2859,7 @@ local function buildOptions()
   makeSection(g, "Window", y)
   y = y - 22
   makeCheck(g, "Lock window", "Locked: the window only shows up while timers run and can't be dragged.",
-    function() return db.locked end, function(v) db.locked = v end):SetPoint("TOPLEFT", 26, y)
+    function() return db.locked end, function(v) setLocked(v) end):SetPoint("TOPLEFT", 26, y)
   y = y - 30
   radioRow(g, "Grows", 30, y, {
     { "middle", "From the middle", "The list grows up and down from its center." },
@@ -3065,9 +3161,8 @@ local function createMinimapButton()
 
   mm:SetScript("OnClick", function(_, button)
     if button == "RightButton" then
-      db.locked = not db.locked
-      say(db.locked and "Window locked." or "Window unlocked, drag the purple box.")
-      dirty = true
+      setLocked(not db.locked)
+      say(db.locked and "Window locked." or "Window unlocked (move mode): drag it, then click Lock on its tab.")
     else
       toggleOptions()
     end
@@ -3151,8 +3246,8 @@ SlashCmdList.DOTWATCH = function(msg)
       say("Styles: " .. table.concat(STYLES, ", ") .. "  (e.g. /dw style icons)")
     end
   elseif cmd == "lock" then
-    db.locked = not db.locked
-    say(db.locked and "Locked. The window only shows up when timers run." or "Unlocked. Drag the purple box to move it.")
+    setLocked(not db.locked)
+    say(db.locked and "Locked. The window only shows up when timers run." or "Unlocked (move mode): drag the window, then click Lock on its tab.")
   elseif cmd == "reset" then
     db.pos = nil
     applyPos()
