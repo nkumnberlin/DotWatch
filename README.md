@@ -2,7 +2,7 @@
 
 DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for every class that has DoTs.
 
-Current release: **v0.14.2** (on CurseForge as [Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), and as a tag here). On `main`, not released yet: 0.14.3 (Priest Mind Soothe), 0.15 (kill skull), 0.16–0.18.1 (German, Russian and Chinese clients and interface). Work in progress: Warlock is tested in game the most; Priest has been tested too, the other classes are new in 0.13/0.14. Feedback and wishes are welcome in the issues.
+Current release: **v0.18.1** (on CurseForge as [Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), and as a tag here): kill skull, German/Russian/Chinese clients and interface, Priest Mind Soothe. Work in progress: Warlock is tested in game the most; Priest has been tested too, the other classes are new in 0.13/0.14. Russian and Chinese texts are not yet checked by native speakers. Feedback and wishes are welcome in the issues.
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
 
