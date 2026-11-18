@@ -243,4 +243,8 @@ ns.STRINGS.ruRU = {
   ["One thin bar per DoT under the health bar. A missing DoT shows as a red bar."] = "Тонкая полоса на каждый DoT под полосой здоровья. Отсутствующий DoT — красная полоса.",
   ["Missing count"] = "Счётчик пропусков",
   ["A small red tag next to the plate: how many of your DoTs are missing."] = "Маленькая метка у индикатора: сколько ваших DoT нет.",
+  -- 0.19.1
+  ["All your DoTs are up"] = "Все ваши DoT висят",
+  ["DoTs missing"] = "Не хватает DoT",
+  ["Mini bar height"] = "Высота мини-полос",
 }

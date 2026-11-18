@@ -243,4 +243,8 @@ ns.STRINGS.zhCN = {
   ["One thin bar per DoT under the health bar. A missing DoT shows as a red bar."] = "血条下方每个DoT一条细条。缺失的DoT显示为红条。",
   ["Missing count"] = "缺失计数",
   ["A small red tag next to the plate: how many of your DoTs are missing."] = "姓名板旁的小红标签：缺少几个你的DoT。",
+  -- 0.19.1
+  ["All your DoTs are up"] = "你的DoT全部生效",
+  ["DoTs missing"] = "缺少DoT",
+  ["Mini bar height"] = "迷你条高度",
 }

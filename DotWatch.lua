@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.19"
+local VERSION = "0.19.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1711,67 +1711,71 @@ local function layoutPlates(sameNameCount, LETTERS)
 end
 
 -- 0.19: every frame: letter color, glow, mini bars and count from the enemy's DoT state
+-- paint one overlay (real plate or the options preview): t for the bars, bt for the blink
+function LOOK.paintPlate(o, rows, missing, t, fight, bt)
+  local blink = 0.55 + 0.45 * math.abs(math.sin((bt or t) * 4))
+  if o.bullet then o.letter:SetShown(fight) end -- the dot only shows in a fight
+  if o.letter:IsShown() then
+    if db.plateStatusLetter ~= false and fight then
+      if missing > 0 then o.letter:SetTextColor(1, 0.23, 0.18) o.letter:SetAlpha(blink)
+      else o.letter:SetTextColor(0.36, 0.9, 0.16) o.letter:SetAlpha(1) end
+    else
+      o.letter:SetTextColor(1, 0.82, 0) o.letter:SetAlpha(1)
+    end
+  end
+  if not o.glow then return end
+  o.glow:SetShown(db.plateGlow and fight and missing > 0 or false)
+  o.glow:SetAlpha(blink)
+  if db.plateCount and fight and missing > 0 then
+    o.cnt.text:SetFormattedText(L["%d missing"], missing)
+    o.cnt:SetWidth(math.max(30, (o.cnt.text:GetStringWidth() or 40) + 10))
+    o.cnt:Show()
+  else
+    o.cnt:Hide()
+  end
+  if db.plateBars and #rows > 0 then
+    -- one bar per fixed DoT row; the game fills it, we never read the plate's size
+    local bh = db.plateBarH or 4
+    for i, r in ipairs(rows) do
+      local row = o.mb.rows[i]
+      if not row then
+        row = CreateFrame("StatusBar", nil, o.mb)
+        row:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        o.mb.rows[i] = row
+      end
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", o.mb, "TOPLEFT", 0, -(i - 1) * (bh + 1))
+      row:SetPoint("TOPRIGHT", o.mb, "TOPRIGHT", 0, -(i - 1) * (bh + 1))
+      row:SetHeight(bh)
+      if r.d then
+        local c = LOOK.color(r.d.info)
+        row.bg:SetColorTexture(0, 0, 0, 0.7)
+        row:SetStatusBarColor(c[1], c[2], c[3])
+        row:SetMinMaxValues(0, math.max(0.1, r.d.expires - r.d.start))
+        row:SetValue(math.max(0, r.d.expires - t))
+      else
+        row.bg:SetColorTexture(1, 0.23, 0.18, fight and 0.5 * blink or 0.15)
+        row:SetValue(0)
+      end
+      row:Show()
+    end
+    for i = #rows + 1, #o.mb.rows do o.mb.rows[i]:Hide() end
+    o.mb:SetHeight(#rows * (bh + 1))
+    o.mb:Show()
+  else
+    o.mb:Hide()
+  end
+end
+
+-- 0.19: every frame: letter color, glow, mini bars and count from the enemy's DoT state
 function LOOK.plateStatus(t)
-  local fight = LOOK.inCombat
-  local blink = 0.55 + 0.45 * math.abs(math.sin(t * 4))
   for _, o in ipairs(overlays) do
     local m = o.mob
     if m and o:IsShown() then
       local rows, missing = LOOK.slotRows(m, t)
-      if o.bullet then o.letter:SetShown(fight) end -- the dot only shows in a fight
-      if o.letter:IsShown() then
-        if db.plateStatusLetter ~= false and fight then
-          if missing > 0 then o.letter:SetTextColor(1, 0.23, 0.18) o.letter:SetAlpha(blink)
-          else o.letter:SetTextColor(0.36, 0.9, 0.16) o.letter:SetAlpha(1) end
-        else
-          o.letter:SetTextColor(1, 0.82, 0) o.letter:SetAlpha(1)
-        end
-      end
-      if o.glow then
-        o.glow:SetShown(db.plateGlow and fight and missing > 0 or false)
-        o.glow:SetAlpha(blink)
-        if db.plateCount and fight and missing > 0 then
-          o.cnt.text:SetFormattedText(L["%d missing"], missing)
-          o.cnt:SetWidth(math.max(30, (o.cnt.text:GetStringWidth() or 40) + 10))
-          o.cnt:Show()
-        else
-          o.cnt:Hide()
-        end
-        if db.plateBars and #rows > 0 then
-          -- one 3 px bar per fixed DoT row; the game fills it, we never read the plate's size
-          for i, r in ipairs(rows) do
-            local row = o.mb.rows[i]
-            if not row then
-              row = CreateFrame("StatusBar", nil, o.mb)
-              row:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-              row.bg = row:CreateTexture(nil, "BACKGROUND")
-              row.bg:SetAllPoints()
-              o.mb.rows[i] = row
-            end
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", o.mb, "TOPLEFT", 0, -(i - 1) * 4)
-            row:SetPoint("TOPRIGHT", o.mb, "TOPRIGHT", 0, -(i - 1) * 4)
-            row:SetHeight(3)
-            if r.d then
-              local total = math.max(0.1, r.d.expires - r.d.start)
-              local c = LOOK.color(r.d.info)
-              row.bg:SetColorTexture(0, 0, 0, 0.7)
-              row:SetStatusBarColor(c[1], c[2], c[3])
-              row:SetMinMaxValues(0, total)
-              row:SetValue(math.max(0, r.d.expires - t))
-            else
-              row.bg:SetColorTexture(1, 0.23, 0.18, fight and 0.5 * blink or 0.15)
-              row:SetValue(0)
-            end
-            row:Show()
-          end
-          for i = #rows + 1, #o.mb.rows do o.mb.rows[i]:Hide() end
-          o.mb:SetHeight(#rows * 4)
-          o.mb:Show()
-        else
-          o.mb:Hide()
-        end
-      end
+      LOOK.paintPlate(o, rows, missing, t, LOOK.inCombat)
     end
   end
 end
@@ -3174,43 +3178,144 @@ local function buildTimersPage(pg)
     function() return db.ccWarnTime or 5 end, function(v) db.ccWarnTime = v end):SetPoint("TOPLEFT", 254, y - 14)
 end
 
--- 0.19 page: Enemies (moved from Timers and General) and the nameplate status
+-- 0.19 page: Enemies (moved from Timers and General) and the nameplate status;
+-- 0.19.1: options on the left, a preview of two nameplates on the right
 function LOOK.buildEnemiesPage(g)
+  local COL = 262
   local y = -54
   makeSection(g, "Enemies", y)
   y = y - 22
   makeCheck(g, "Keep enemies until they die", "An enemy stays in the list with its health, even when none of your DoTs is on it.",
     function() return db.keepAlive ~= false end, function(v) db.keepAlive = v dirty = true end):SetPoint("TOPLEFT", 26, y)
   makeCheck(g, "Blink red when DoTs are missing", "The enemy's name blinks softly red while one of your DoTs is not on it.",
-    function() return db.missingBlink ~= false end, function(v) db.missingBlink = v end):SetPoint("TOPLEFT", 250, y)
+    function() return db.missingBlink ~= false end, function(v) db.missingBlink = v end):SetPoint("TOPLEFT", 280, y)
   y = y - 36
+  local top = y
 
-  makeSection(g, "Nameplates", y)
+  makeSection(g, "Nameplates", y, 24, COL)
   y = y - 22
   makeCheck(g, "Letter above the plate", "When several enemies share a name, show A, B, C … above their nameplates.",
     function() return db.plates end, function(v) db.plates = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 24
   makeCheck(g, "DoT icons on plates", "Also show your running DoTs as small icons above the nameplate.",
-    function() return db.plateDots end, function(v) db.plateDots = v end):SetPoint("TOPLEFT", 250, y)
-  y = y - 44
-  makeSlider(g, "Height above the plate", -20, 40, 1, "%d px",
-    function() return db.plateY or 4 end, function(v) db.plateY = v end):SetPoint("TOPLEFT", 30, y)
-  radioRow(g, "Letter", 300, y + 2, {
+    function() return db.plateDots end, function(v) db.plateDots = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 26
+  radioRow(g, "Letter", 30, y, {
     { "left", "Left", "Left of the health bar, away from the damage numbers." },
     { "above", "Above", "Above the plate, like before 0.14.1 (can hide behind damage numbers)." },
   }, function() return db.plateSide or "left" end, function(v) db.plateSide = v end)
-  y = y - 40
+  y = y - 38
+  local sl = makeSlider(g, "Height above the plate", -20, 40, 1, "%d px",
+    function() return db.plateY or 4 end, function(v) db.plateY = v end)
+  sl:SetPoint("TOPLEFT", 30, y)
+  sl:SetWidth(180) -- leaves room for the value before the preview
+  y = y - 34
 
-  makeSection(g, "Missing DoTs on the plate", y)
+  makeSection(g, "Missing DoTs on the plate", y, 24, COL)
   y = y - 22
   makeCheck(g, "Color the letter", "In a fight the letter turns green when all your DoTs are up and blinks red when one is missing. Enemies without a letter get a dot. Needs \"Letter above the plate\".",
     function() return db.plateStatusLetter ~= false end, function(v) db.plateStatusLetter = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 24
   makeCheck(g, "Red frame", "A blinking red frame around the health bar while one of your DoTs is missing.",
-    function() return db.plateGlow end, function(v) db.plateGlow = v end):SetPoint("TOPLEFT", 250, y)
-  y = y - 26
+    function() return db.plateGlow end, function(v) db.plateGlow = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 24
   makeCheck(g, "Mini bars", "One thin bar per DoT under the health bar. A missing DoT shows as a red bar.",
     function() return db.plateBars end, function(v) db.plateBars = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 24
   makeCheck(g, "Missing count", "A small red tag next to the plate: how many of your DoTs are missing.",
-    function() return db.plateCount end, function(v) db.plateCount = v end):SetPoint("TOPLEFT", 250, y)
+    function() return db.plateCount end, function(v) db.plateCount = v end):SetPoint("TOPLEFT", 26, y)
+  y = y - 40
+  sl = makeSlider(g, "Mini bar height", 2, 10, 1, "%d px",
+    function() return db.plateBarH or 4 end, function(v) db.plateBarH = v end)
+  sl:SetPoint("TOPLEFT", 30, y)
+  sl:SetWidth(180)
+
+  -- preview: two made-up nameplates that follow the options above
+  makeSection(g, "Preview", top, COL + 16)
+  local box = CreateFrame("Frame", nil, g, BACKDROP_TEMPLATE)
+  box:SetPoint("TOPLEFT", COL + 16, top - 22)
+  box:SetPoint("BOTTOMRIGHT", -22, 6)
+  if box.SetBackdrop then
+    box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    box:SetBackdropColor(0.08, 0.06, 0.04, 0.9)
+    box:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
+  end
+  local plates = {}
+  local function fake(i, caption)
+    local p = { y = -44 - (i - 1) * 120 }
+    local hb = CreateFrame("StatusBar", nil, box)
+    hb:SetSize(130, 12)
+    hb:SetPoint("TOPLEFT", box, "TOPLEFT", 34, p.y)
+    hb:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    hb:SetStatusBarColor(0.85, 0.12, 0.1)
+    hb:SetMinMaxValues(0, 100)
+    local bg = hb:CreateTexture(nil, "BACKGROUND")
+    bg:SetPoint("TOPLEFT", -1, 1)
+    bg:SetPoint("BOTTOMRIGHT", 1, -1)
+    bg:SetColorTexture(0, 0, 0, 0.85)
+    hb.name = hb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hb.name:SetPoint("BOTTOM", hb, "TOP", 0, 2)
+    hb.cap = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hb.cap:SetText(L[caption])
+    local o = CreateFrame("Frame", nil, box)
+    o:SetAllPoints(hb)
+    o.letter = o:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    o.icons = {}
+    LOOK.plateParts(o)
+    o.glow:SetPoint("TOPLEFT", hb, "TOPLEFT", -3, 3)
+    o.glow:SetPoint("BOTTOMRIGHT", hb, "BOTTOMRIGHT", 3, -3)
+    o.mb:SetPoint("TOPLEFT", hb, "BOTTOMLEFT", 0, -2)
+    o.mb:SetPoint("TOPRIGHT", hb, "BOTTOMRIGHT", 0, -2)
+    o.cnt:SetPoint("LEFT", hb, "RIGHT", 6, 0)
+    p.hb, p.o = hb, o
+    plates[i] = p
+  end
+  fake(1, "All your DoTs are up")
+  fake(2, "DoTs missing")
+  local sample, t0
+  local function paint()
+    if not sample then sample, t0 = buildSample(), now() end
+    local mobs2 = { sample[2], sample[3] } -- Slave Worker B: all up; Dark Iron Taskmaster: missing
+    for i, p in ipairs(plates) do
+      local m, o, hb = mobs2[i], p.o, p.hb
+      hb.name:SetText(m.name)
+      hb:SetValue(m.fakeHP or 50)
+      local rows, missing = LOOK.slotRows(m, t0)
+      local isLetter = i == 1
+      o.bullet = not isLetter and db.plates and db.plateStatusLetter ~= false
+      o.letter:ClearAllPoints()
+      o.letter:SetText(isLetter and LETTERS:sub(m.letter, m.letter) or "•")
+      local above = db.plateSide == "above"
+      if above then o.letter:SetPoint("BOTTOMLEFT", hb, "TOPLEFT", 0, 15)
+      else o.letter:SetPoint("RIGHT", hb, "LEFT", -3, 0) end
+      o.letter:SetShown(db.plates and (isLetter or o.bullet) or false)
+      -- DoT icons above the name (after the letter when that sits above too)
+      local x, k = (above and o.letter:IsShown()) and 18 or 0, 0
+      for _, ic in ipairs(o.icons) do ic:Hide() end
+      if db.plateDots then
+        for _, r in ipairs(rows) do
+          if r.d then
+            k = k + 1
+            local ic = o.icons[k]
+            if not ic then ic = o:CreateTexture(nil, "ARTWORK") ic:SetSize(16, 16) o.icons[k] = ic end
+            ic:ClearAllPoints()
+            ic:SetPoint("BOTTOMLEFT", hb, "TOPLEFT", x, 16)
+            ic:SetTexture(r.d.info.icon)
+            ic:Show()
+            x = x + 19
+          end
+        end
+      end
+      LOOK.paintPlate(o, rows, missing, t0, true, now())
+      local below = db.plateBars and #rows * ((db.plateBarH or 4) + 1) + 2 or 0
+      hb.cap:ClearAllPoints()
+      hb.cap:SetPoint("TOPLEFT", hb, "BOTTOMLEFT", 0, -(below + 8))
+    end
+  end
+  box:SetScript("OnShow", function() sample = nil paint() end)
+  box:SetScript("OnUpdate", paint)
 end
 
 -- page: Statistics (resists per enemy type, fight summary)
@@ -3494,13 +3599,16 @@ local function buildOptions()
   ry = ry - 26
   makeCheck(dp, "Show enemy health", "Green when healthy, yellow at half, red when low.",
     function() return db.showHP ~= false end, function(v) db.showHP = v if preview then preview.redraw() end end):SetPoint("TOPLEFT", 24, ry)
-  ry = ry - 26
-  radioRow(dp, "Shown as", 30, ry, {
-    { "pct", "Percent", "The number next to the name." },
-    { "bar", "Bar", "A thin health bar under the name instead of the number." },
-    { "barpct", "Bar + percent", "The health bar with the number in it." },
-  }, function() return db.hpMode or "pct" end, function(v) db.hpMode = v dirty = true if preview then preview.redraw() end end)
-  ry = ry - 34
+  ry = ry - 24
+  -- 0.19.1: two rows, one row ran into the preview
+  local function hpRadio(v, label, help, x, yy)
+    makeRadio(dp, label, help, v, function() return db.hpMode or "pct" end,
+      function(val) db.hpMode = val end):SetPoint("TOPLEFT", x, yy)
+  end
+  hpRadio("pct", "Percent", "The number next to the name.", 50, ry)
+  hpRadio("bar", "Bar", "A thin health bar under the name instead of the number.", 140, ry)
+  hpRadio("barpct", "Bar + percent", "The health bar with the number in it.", 50, ry - 22)
+  ry = ry - 52
   makeSection(dp, "Window size", ry, 24, COL)
   ry = ry - 24
   local function nearestSize()

@@ -245,4 +245,8 @@ ns.STRINGS.zhTW = {
   ["One thin bar per DoT under the health bar. A missing DoT shows as a red bar."] = "血條下方每個DoT一條細條。缺失的DoT顯示為紅條。",
   ["Missing count"] = "缺失計數",
   ["A small red tag next to the plate: how many of your DoTs are missing."] = "名條旁的小紅標籤：缺少幾個你的DoT。",
+  -- 0.19.1
+  ["All your DoTs are up"] = "你的DoT全部生效",
+  ["DoTs missing"] = "缺少DoT",
+  ["Mini bar height"] = "迷你條高度",
 }

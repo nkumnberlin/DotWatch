@@ -242,4 +242,8 @@ ns.STRINGS.deDE = {
   ["One thin bar per DoT under the health bar. A missing DoT shows as a red bar."] = "Ein dünner Balken pro DoT unter dem Lebensbalken. Ein fehlender DoT zeigt sich als roter Balken.",
   ["Missing count"] = "Fehlende zählen",
   ["A small red tag next to the plate: how many of your DoTs are missing."] = "Ein kleines rotes Schild neben der Plakette: wie viele deiner DoTs fehlen.",
+  -- 0.19.1
+  ["All your DoTs are up"] = "Alle deine DoTs laufen",
+  ["DoTs missing"] = "DoTs fehlen",
+  ["Mini bar height"] = "Höhe der Mini-Balken",
 }
