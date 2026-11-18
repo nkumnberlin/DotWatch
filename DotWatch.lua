@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.15: kill skull next to each enemy's health: bright when your running DoTs will
+-- finish it (tooltip damage vs. secret health, compared by the game), dim when not.
 -- New in 0.14.3: Priest Mind Soothe is tracked (control timer, 15 s).
 -- New in 0.14.2: move mode is obvious (gold edge, tab with "Move mode" + Lock button,
 -- tooltip); new players took the purple unlocked box for the normal look.
@@ -40,7 +42,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.14.3"
+local VERSION = "0.15"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -235,6 +237,33 @@ local function parseDuration(desc)
   return nil
 end
 
+-- 0.15: what a DoT deals in total, from its tooltip. The idea (and how Forever's tooltips
+-- read) comes from DoesItDie by Joe Greive (MIT), as ported in Smooth Animated Bars:
+--   "... 822 Shadow damage over 18 sec."           -> 822 (the last such clause, so Immolate's
+--   "279 Fire damage and then an additional 510 Fire damage over 15 sec" gives 510)
+--   "Transfers 15 health ... every 3 sec. Lasts 30 sec."  -> 15 * 10 (Siphon Life)
+-- Damage numbers in combat (UNIT_COMBAT) are secret on Forever, so ticks can't be measured:
+-- the tooltip numbers are all there is.
+local KILL = {} -- 0.15: kill skull (one local: the main chunk is at Lua's 200-local limit)
+function KILL.parseDamage(desc)
+  if type(desc) ~= "string" then return nil end
+  desc = desc:gsub("\194\160", " ")
+  desc = desc:gsub("\226\128\175", " ")
+  desc = desc:gsub("(%d),(%d%d%d)", "%1%2")
+  if desc:find("^Heals") then return nil end
+  local total
+  for amount in desc:gmatch("(%d+)[%a ]-damage over %d+%.?%d* sec") do total = tonumber(amount) end
+  if total and total > 0 then return total end
+  local amount, every = desc:match("(%d+)[%a ]-damage every (%d+%.?%d*) sec")
+  if not amount then amount, every = desc:match("Transfers (%d+) health.-every (%d+%.?%d*) sec") end
+  local lasts = desc:match("[Ll]asts (%d+%.?%d*) sec")
+  amount, every, lasts = tonumber(amount), tonumber(every), tonumber(lasts)
+  if amount and every and lasts and every > 0 then
+    return amount * math.floor(lasts / every + 0.5)
+  end
+  return nil
+end
+
 local function iconOf(id)
   return (C_Spell and C_Spell.GetSpellTexture and plain(C_Spell.GetSpellTexture, id))
     or (GetSpellTexture and plain(GetSpellTexture, id)) or 136197
@@ -255,10 +284,10 @@ local function spellInfo(id)
   local def = DEF_BY_NAME[name]
   if not def then spellCache[id] = false return nil end
   if def.cc and db and db.trackCC == false then return nil end
-  local descDur = C_Spell and C_Spell.GetSpellDescription
-    and parseDuration(str(plain(C_Spell.GetSpellDescription, id)))
+  local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
+  local descDur = parseDuration(desc)
   local info = { id = id, name = name, def = def, group = def.group, slot = def.slot, color = def.color,
-    icon = iconOf(id), descDur = descDur }
+    icon = iconOf(id), descDur = descDur, dmg = def.tick and KILL.parseDamage(desc) or nil }
   spellCache[id] = info
   return info
 end
@@ -432,6 +461,36 @@ local function addFlash(m, text, r, g, b)
   dirty = true
 end
 
+-- 0.15: damage your DoTs on this enemy still have to deal (tooltip numbers, ticks still to
+-- come). Bane/Curse of Agony is back-loaded on Forever: ticks 0.5x for the first third,
+-- 1x, then 1.5x (observed by DoesItDie). Lost DoTs count nothing, so the guess errs low.
+KILL.AGONY = { 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1.5, 1.5, 1.5, 1.5 }
+KILL.SHAPES = { ["Bane of Agony"] = KILL.AGONY, ["Curse of Agony"] = KILL.AGONY }
+function KILL.dotLeft(d, t)
+  local iv = d.info.def.tick
+  if not d.dmg or not iv or d.lost then return 0 end
+  local total = math.floor((d.expires - d.start) / iv + 0.5)
+  if total < 1 then return 0 end
+  local done = math.max(0, math.floor((t - d.start) / iv + 0.05)) -- tick k lands at start + k * iv
+  if done >= total then return 0 end
+  local per = d.dmg / total
+  local shape = KILL.SHAPES[d.info.name]
+  if not shape then return per * (total - done) end
+  local sum = 0
+  for k = done + 1, total do
+    local i = math.max(1, math.min(#shape, math.ceil(k / total * #shape)))
+    sum = sum + per * shape[i]
+  end
+  return sum
+end
+function KILL.damageLeft(m, t)
+  local sum = 0
+  for _, d in pairs(m.dots) do
+    if d.expires > t then sum = sum + KILL.dotLeft(d, t) end
+  end
+  return sum
+end
+
 -- 0.14.1: is one of our "calm" / "invuln" control spells running on this enemy?
 -- (Banish: can't be hurt; Polymorph, Sap ...: left alone on purpose.) `except` is skipped.
 local function ccActive(m, flag, except)
@@ -573,7 +632,13 @@ local function startDot(info, guid, name, t, how)
   end
   local prev = m.dots[info.id]
   local dur = durationOf(info)
-  local d = { info = info, start = t, expires = t + dur, prev = prev,
+  -- 0.15: the tooltip again, so new gear or a new rank counts (it may be unreadable in combat:
+  -- then the number read earlier stays)
+  if info.def.tick and C_Spell and C_Spell.GetSpellDescription then
+    local fresh = KILL.parseDamage(str(plain(C_Spell.GetSpellDescription, info.id)))
+    if fresh then info.dmg = fresh end
+  end
+  local d = { info = info, start = t, expires = t + dur, prev = prev, dmg = info.dmg,
     confirmed = prev and prev.confirmed or false }
   if info.group then
     for id, other in pairs(m.dots) do
@@ -1107,6 +1172,56 @@ local function getHeader(cv, i)
   return h
 end
 
+-- 0.15: "do my DoTs kill it?" Health is secret on Forever, so Lua never compares it. A
+-- hidden StatusBar KILL.LONG px wide gets the enemy's health as its range and the damage
+-- left as its value; the skull rides the right edge of its (invisible) fill, inside a
+-- skull-sized window at the bar's right end. It slides into that window only when the
+-- damage reaches the health: the game does the comparison. (Idea: DoesItDie / Smooth
+-- Animated Bars.) Behind it a dim gray skull: "your DoTs alone won't finish it".
+KILL.LONG = 10000
+KILL.SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
+function KILL.get(cv, h)
+  if h.kill then return h.kill end
+  local k = CreateFrame("Frame", nil, cv.frame)
+  k:SetClipsChildren(true)
+  k.dim = k:CreateTexture(nil, "ARTWORK")
+  k.dim:SetAllPoints()
+  k.dim:SetTexture(KILL.SKULL)
+  k.dim:SetDesaturated(true)
+  k.dim:SetAlpha(0.3)
+  k.bar = CreateFrame("StatusBar", nil, k)
+  k.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+  k.bar:SetStatusBarColor(0, 0, 0, 0)
+  k.bar:SetPoint("RIGHT", k, "RIGHT", 0, 0)
+  k.bar:SetMinMaxValues(0, 1)
+  k.bar:SetValue(0)
+  k.icon = k.bar:CreateTexture(nil, "OVERLAY")
+  k.icon:SetTexture(KILL.SKULL)
+  k.icon:SetPoint("RIGHT", k.bar:GetStatusBarTexture(), "RIGHT", 0, 0)
+  k:Hide()
+  h.kill = k
+  return k
+end
+
+-- feed one header's skull (every 0.2 s for the real list, once for the preview)
+function KILL.set(h, t)
+  local k, m = h.kill, h.mob
+  if not k then return end
+  if not m or not h:IsShown() or db.killIcon == false then k:Hide() return end
+  if m.fakeHP then -- options preview: plain numbers
+    k.bar:SetMinMaxValues(0, 100)
+    k.bar:SetValue(m.fakeKill and 100 or 0)
+    k:Show()
+    return
+  end
+  local left = KILL.damageLeft(m, t)
+  if left <= 0 or not m.unit then k:Hide() return end
+  local ok = pcall(function() k.bar:SetMinMaxValues(0, UnitHealth(m.unit)) end)
+  if not ok then k:Hide() return end
+  k.bar:SetValue(left)
+  k:Show()
+end
+
 local function getFlash(cv, i)
   local fl = cv.flashes[i]
   if fl then return fl end
@@ -1478,6 +1593,15 @@ local function placeHeader(m, tg, x, y, big)
     local p = m.fakeHP / 100
     if p >= 0.5 then h.hp:SetTextColor((1 - p) * 2, 1, 0.15) else h.hp:SetTextColor(1, p * 2, 0.15) end
   end
+  -- 0.15: kill skull right after the HP % (anchored only, nothing read)
+  local k = KILL.get(cv, h)
+  local s = big and 16 or math.max(11, f.head - 3)
+  k:ClearAllPoints()
+  k:SetPoint("LEFT", h.hp, "RIGHT", 4, 0)
+  k:SetSize(s, s)
+  k.bar:SetSize(KILL.LONG, s)
+  k.icon:SetSize(s, s)
+  KILL.set(h, now())
   return big and 21 or f.head
 end
 
@@ -1800,7 +1924,7 @@ end
 
 -- draw a list of enemies into a canvas in the given style; returns height, width
 local function drawCanvas(canvas, list, tg, style)
-  for _, h in ipairs(canvas.headers) do h:Hide() h.hp:Hide() h.mob = nil end
+  for _, h in ipairs(canvas.headers) do h:Hide() h.hp:Hide() h.mob = nil if h.kill then h.kill:Hide() end end
   for _, pool in ipairs({ canvas.bars, canvas.slims, canvas.cells, canvas.minis, canvas.tcells }) do
     for _, w in ipairs(pool) do w:Hide() w.dot = nil end
   end
@@ -2090,9 +2214,11 @@ local function setHP(fs, unit)
 end
 
 local function updateHP()
+  local t = now()
   for _, h in ipairs(main.headers) do
     local m = h.mob
     if m and h:IsShown() then setHP(h.hp, db.showHP ~= false and m.unit or nil) end
+    KILL.set(h, t)
   end
 end
 
@@ -2474,6 +2600,7 @@ local function buildSample()
     mob("preview-B", "Slave Worker", 2, 45, 2, { { s1, len(s1) * 0.23, len(s1) }, { s3, len(s3) * 0.64, len(s3) }, { s2, 2.1, len(s2) } }),
     mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { s2, len(s2) * 0.58, len(s2) } }, s3 .. ": Resisted"),
   }
+  list[3].fakeKill = true -- 0.15: the preview shows one enemy your DoTs will finish
   if known["Siphon Life"] and DEF_BY_NAME["Siphon Life"] then
     local id, d = dot("Siphon Life", 22, 30)
     list[1].dots[id] = d
@@ -2667,6 +2794,9 @@ local function buildTimersPage(pg)
   y = y - 22
   makeCheck(pg, "Tick marks on the bars", "A thin line for every damage tick still to come (Bars and Slim bars).",
     function() return db.ticks ~= false end, function(v) db.ticks = v end):SetPoint("TOPLEFT", 26, y)
+  makeCheck(pg, "Skull: my DoTs will kill it",
+    "Next to the health %: a bright skull when the damage your running DoTs still deal (from their tooltips) reaches the enemy's health, a dim one when it doesn't, so refresh or keep casting. Counts only your DoTs, not other players or your pet. Needs the enemy as target or with a nameplate.",
+    function() return db.killIcon ~= false end, function(v) db.killIcon = v dirty = true end):SetPoint("TOPLEFT", 250, y)
   y = y - 26
   makeCheck(pg, "Mark DoTs as \"lost?\" when their ticks stop", "If an enemy you can see takes no more ticks of a DoT's school, the DoT was probably removed.",
     function() return db.lostCheck ~= false end, function(v) db.lostCheck = v end):SetPoint("TOPLEFT", 26, y)
