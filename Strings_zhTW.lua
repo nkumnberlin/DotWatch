@@ -252,4 +252,13 @@ ns.STRINGS.zhTW = {
   -- 0.19.2
   ["Mini bars up / down"] = "迷你條上下位置",
   ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "負數向下移動，例如移到敵人施法條下方。正數向上移動。",
+  -- 0.19.3
+  ["Icons on the mini bars"] = "迷你條圖示",
+  ["Off"] = "關",
+  ["Before"] = "前面",
+  ["After"] = "後面",
+  ["Only the bars."] = "只顯示條。",
+  ["The DoT's icon left of its bar."] = "DoT圖示在條的左邊。",
+  ["The DoT's icon right of its bar."] = "DoT圖示在條的右邊。",
+  ["Icon size"] = "圖示大小",
 }

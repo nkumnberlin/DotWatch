@@ -250,4 +250,13 @@ ns.STRINGS.zhCN = {
   -- 0.19.2
   ["Mini bars up / down"] = "迷你条上下位置",
   ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "负数向下移动，例如移到敌人施法条下方。正数向上移动。",
+  -- 0.19.3
+  ["Icons on the mini bars"] = "迷你条图标",
+  ["Off"] = "关",
+  ["Before"] = "前面",
+  ["After"] = "后面",
+  ["Only the bars."] = "只显示条。",
+  ["The DoT's icon left of its bar."] = "DoT图标在条的左边。",
+  ["The DoT's icon right of its bar."] = "DoT图标在条的右边。",
+  ["Icon size"] = "图标大小",
 }

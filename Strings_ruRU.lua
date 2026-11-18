@@ -250,4 +250,13 @@ ns.STRINGS.ruRU = {
   -- 0.19.2
   ["Mini bars up / down"] = "Мини-полосы вверх / вниз",
   ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "Минус сдвигает полосы вниз, например под полосу заклинания врага. Плюс — вверх.",
+  -- 0.19.3
+  ["Icons on the mini bars"] = "Значки у мини-полос",
+  ["Off"] = "Нет",
+  ["Before"] = "Слева",
+  ["After"] = "Справа",
+  ["Only the bars."] = "Только полосы.",
+  ["The DoT's icon left of its bar."] = "Значок DoT слева от его полосы.",
+  ["The DoT's icon right of its bar."] = "Значок DoT справа от его полосы.",
+  ["Icon size"] = "Размер значков",
 }

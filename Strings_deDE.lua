@@ -249,4 +249,13 @@ ns.STRINGS.deDE = {
   -- 0.19.2
   ["Mini bars up / down"] = "Mini-Balken hoch / runter",
   ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "Minus schiebt die Balken nach unten, z. B. unter die Zauberleiste des Gegners. Plus schiebt sie nach oben.",
+  -- 0.19.3
+  ["Icons on the mini bars"] = "Symbole an den Mini-Balken",
+  ["Off"] = "Aus",
+  ["Before"] = "Davor",
+  ["After"] = "Danach",
+  ["Only the bars."] = "Nur die Balken.",
+  ["The DoT's icon left of its bar."] = "Das Symbol des DoTs links vom Balken.",
+  ["The DoT's icon right of its bar."] = "Das Symbol des DoTs rechts vom Balken.",
+  ["Icon size"] = "Symbolgröße",
 }

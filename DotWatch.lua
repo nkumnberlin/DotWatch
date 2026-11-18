@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.19.2"
+local VERSION = "0.19.3"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1742,6 +1742,10 @@ function LOOK.paintPlate(o, rows, missing, t, fight, bt)
   if db.plateBars and #rows > 0 then
     -- one bar per fixed DoT row; the game fills it, we never read the plate's size
     local bh = db.plateBarH or 4
+    -- 0.19.3: the DoT's icon before or after each bar, small / medium / large
+    local iconMode = db.plateBarIcons or "off"
+    local isz = ({ s = 10, m = 14, l = 18 })[db.plateBarIconSize or "m"] or 14
+    local step = (iconMode ~= "off" and math.max(bh, isz) or bh) + 1
     for i, r in ipairs(rows) do
       local row = o.mb.rows[i]
       if not row then
@@ -1751,10 +1755,27 @@ function LOOK.paintPlate(o, rows, missing, t, fight, bt)
         row.bg:SetAllPoints()
         o.mb.rows[i] = row
       end
+      local off = -(i - 1) * step - math.floor((step - 1 - bh) / 2) -- bar centered on its icon
       row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", o.mb, "TOPLEFT", 0, -(i - 1) * (bh + 1))
-      row:SetPoint("TOPRIGHT", o.mb, "TOPRIGHT", 0, -(i - 1) * (bh + 1))
+      row:SetPoint("TOPLEFT", o.mb, "TOPLEFT", 0, off)
+      row:SetPoint("TOPRIGHT", o.mb, "TOPRIGHT", 0, off)
       row:SetHeight(bh)
+      if iconMode ~= "off" then
+        if not row.icon then
+          row.icon = row:CreateTexture(nil, "ARTWORK")
+          row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        row.icon:SetSize(isz, isz)
+        row.icon:ClearAllPoints()
+        if iconMode == "left" then row.icon:SetPoint("RIGHT", row, "LEFT", -2, 0)
+        else row.icon:SetPoint("LEFT", row, "RIGHT", 2, 0) end
+        row.icon:SetTexture(r.icon or 136197)
+        row.icon:SetDesaturated(not r.d)
+        row.icon:SetAlpha(r.d and 1 or 0.6)
+        row.icon:Show()
+      elseif row.icon then
+        row.icon:Hide()
+      end
       if r.d then
         local c = LOOK.color(r.d.info)
         row.bg:SetColorTexture(0, 0, 0, 0.7)
@@ -1768,7 +1789,7 @@ function LOOK.paintPlate(o, rows, missing, t, fight, bt)
       row:Show()
     end
     for i = #rows + 1, #o.mb.rows do o.mb.rows[i]:Hide() end
-    o.mb:SetHeight(#rows * (bh + 1))
+    o.mb:SetHeight(#rows * step)
     o.mb:Show()
   else
     o.mb:Hide()
@@ -2280,13 +2301,13 @@ function LOOK.slotRows(m, t)
   local calm = ccActive(m, "calm")
   local immune = db.immune[npcID(m.guid) or 0] or {}
   for _, slot in ipairs(SLOT_ORDER) do
-    local s = slotSpell(slot)
+    local s, id = slotSpell(slot)
     if s and not immune[s.name] then
       local best
       for _, d in pairs(m.dots) do
         if d.info.slot == slot and (not best or d.start > best.start) then best = d end
       end
-      rows[#rows + 1] = { slot = slot, d = best }
+      rows[#rows + 1] = { slot = slot, d = best, icon = rowIcon({ dot = best, id = id }) }
       if not best and not calm then missing = missing + 1 end
     end
   end
@@ -3247,7 +3268,31 @@ function LOOK.buildEnemiesPage(g)
   makeSection(g, "Preview", top, COL + 16)
   local box = CreateFrame("Frame", nil, g, BACKDROP_TEMPLATE)
   box:SetPoint("TOPLEFT", COL + 16, top - 22)
-  box:SetPoint("BOTTOMRIGHT", -22, 6)
+  box:SetPoint("BOTTOMRIGHT", -22, 112)
+  -- 0.19.3: icons on the mini bars (under the preview: the left column is full)
+  local function radioLine(label, yy, items, get, set)
+    local fs = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", COL + 18, yy)
+    fs:SetText(L[label])
+    local rx = COL + 18
+    for _, it in ipairs(items) do
+      local rb = makeRadio(g, it[2], it[3], it[1], get, set)
+      rb.text:SetFontObject("GameFontHighlightSmall") -- narrow: three choices in 240 px
+      rb:SetHitRectInsets(0, -(rb.text:GetStringWidth() + 6), -2, -2)
+      rb:SetPoint("TOPLEFT", rx, yy - 16)
+      rx = rx + 26 + rb.text:GetStringWidth() + 10
+    end
+  end
+  radioLine("Icons on the mini bars", -364, {
+    { "off", "Off", "Only the bars." },
+    { "left", "Before", "The DoT's icon left of its bar." },
+    { "right", "After", "The DoT's icon right of its bar." },
+  }, function() return db.plateBarIcons or "off" end, function(v) db.plateBarIcons = v end)
+  radioLine("Icon size", -408, {
+    { "s", "Small", "10 px" },
+    { "m", "Medium", "14 px" },
+    { "l", "Large", "18 px" },
+  }, function() return db.plateBarIconSize or "m" end, function(v) db.plateBarIconSize = v end)
   if box.SetBackdrop then
     box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
       edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
@@ -3257,10 +3302,10 @@ function LOOK.buildEnemiesPage(g)
   end
   local plates = {}
   local function fake(i, caption)
-    local p = { y = -44 - (i - 1) * 120 }
+    local p = { y = -36 - (i - 1) * 96 }
     local hb = CreateFrame("StatusBar", nil, box)
     hb:SetSize(130, 12)
-    hb:SetPoint("TOPLEFT", box, "TOPLEFT", 34, p.y)
+    hb:SetPoint("TOPLEFT", box, "TOPLEFT", 36, p.y)
     hb:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     hb:SetStatusBarColor(0.85, 0.12, 0.1)
     hb:SetMinMaxValues(0, 100)
@@ -3321,7 +3366,8 @@ function LOOK.buildEnemiesPage(g)
       end
       LOOK.anchorBars(o, hb)
       LOOK.paintPlate(o, rows, missing, t0, true, now())
-      local below = db.plateBars and math.max(0, #rows * ((db.plateBarH or 4) + 1) + 2 - (db.plateBarY or 0)) or 0
+      local below = db.plateBars and math.max(0, plain(o.mb.GetHeight, o.mb) or 0) + 2 - (db.plateBarY or 0) or 0
+      below = math.max(0, below)
       hb.cap:ClearAllPoints()
       hb.cap:SetPoint("TOPLEFT", hb, "BOTTOMLEFT", 0, -(below + 8))
     end
