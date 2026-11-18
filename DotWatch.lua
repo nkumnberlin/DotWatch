@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.16: spells are found by spell ID, so DotWatch works on German, Russian, Chinese ...
+-- clients (names come from the game). Enslave Demon is Subjugate Demon on Forever.
 -- New in 0.15: kill skull next to each enemy's health: bright when your running DoTs will
 -- finish it (tooltip damage vs. secret health, compared by the game), dim when not.
 -- New in 0.14.3: Priest Mind Soothe is tracked (control timer, 15 s).
@@ -42,7 +44,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.15"
+local VERSION = "0.16"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -96,84 +98,84 @@ end
 -- slot  = fixed row per enemy (gray placeholder while not active); nil = only shown when active
 local SPELLS = {
   -- tick = seconds between damage ticks, school = 32 shadow / 4 fire (for "DoT lost?")
-  { name = "Corruption",            dur = 18,  color = { 0.62, 0.30, 0.95 }, slot = "corruption", tick = 3, school = 32 },
-  { name = "Immolate",              dur = 15,  color = { 1.00, 0.50, 0.10 }, slot = "immolate", tick = 3, school = 4 },
-  { name = "Siphon Life",           dur = 30,  color = { 0.30, 0.85, 0.40 }, slot = "siphon", tick = 3, school = 32 },
+  { name = "Corruption", id = 172,            dur = 18,  color = { 0.62, 0.30, 0.95 }, slot = "corruption", tick = 3, school = 32 },
+  { name = "Immolate", id = 348,              dur = 15,  color = { 1.00, 0.50, 0.10 }, slot = "immolate", tick = 3, school = 4 },
+  { name = "Siphon Life", id = 18265,           dur = 30,  color = { 0.30, 0.85, 0.40 }, slot = "siphon", tick = 3, school = 32 },
   { name = "Unstable Affliction",   dur = 18,  color = { 0.45, 0.70, 1.00 }, slot = "ua", tick = 3, school = 32 },
-  { name = "Bane of Agony",         dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "bane", slot = "bane", tick = 2, school = 32 },
-  { name = "Bane of Doom",          dur = 60,  color = { 0.70, 0.10, 0.10 }, group = "bane", slot = "bane" },
+  { name = "Bane of Agony", id = 980,         dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "bane", slot = "bane", tick = 2, school = 32 },
+  { name = "Bane of Doom", id = 603,          dur = 60,  color = { 0.70, 0.10, 0.10 }, group = "bane", slot = "bane" },
   { name = "Bane of Havoc",         dur = 300, color = { 0.80, 0.30, 0.30 }, group = "bane", slot = "bane" },
   { name = "Curse of Agony",        dur = 24,  color = { 0.85, 0.75, 0.20 }, group = "curse", slot = "bane", tick = 2, school = 32 },
   { name = "Curse of Doom",         dur = 60,  color = { 0.70, 0.10, 0.10 }, group = "curse", slot = "bane" },
-  { name = "Curse of Weakness",     dur = 120, color = { 0.60, 0.60, 0.60 }, group = "curse" },
-  { name = "Curse of Recklessness", dur = 120, color = { 0.80, 0.40, 0.40 }, group = "curse" },
-  { name = "Curse of Tongues",      dur = 30,  color = { 0.50, 0.50, 0.90 }, group = "curse" },
-  { name = "Curse of the Elements", dur = 300, color = { 0.40, 0.60, 0.90 }, group = "curse" },
-  { name = "Curse of Shadow",       dur = 300, color = { 0.50, 0.30, 0.70 }, group = "curse" },
-  { name = "Curse of Exhaustion",   dur = 12,  color = { 0.40, 0.70, 0.70 }, group = "curse" },
+  { name = "Curse of Weakness", id = 702,     dur = 120, color = { 0.60, 0.60, 0.60 }, group = "curse" },
+  { name = "Curse of Recklessness", id = 704, dur = 120, color = { 0.80, 0.40, 0.40 }, group = "curse" },
+  { name = "Curse of Tongues", id = 1714,      dur = 30,  color = { 0.50, 0.50, 0.90 }, group = "curse" },
+  { name = "Curse of the Elements", id = 440892, dur = 300, color = { 0.40, 0.60, 0.90 }, group = "curse" },
+  { name = "Curse of Shadow", id = 17937,       dur = 300, color = { 0.50, 0.30, 0.70 }, group = "curse" },
+  { name = "Curse of Exhaustion", id = 18223,   dur = 12,  color = { 0.40, 0.70, 0.70 }, group = "curse" },
   -- crowd control: shown while active, like curses (option "Control timers")
   -- calm   = you leave this enemy alone on purpose (breaks on damage, or it's yours now):
   --          no red "DoTs missing" blink while it runs
   -- invuln = the enemy can't be hurt while it runs (no "lost?", no stored immunities)
-  { name = "Fear",                  dur = 20,  color = { 1.00, 0.40, 0.70 }, cc = true },
-  { name = "Banish",                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true, calm = true, invuln = true },
-  { name = "Enslave Demon",         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true, calm = true },
-  { name = "Death Coil",            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
+  { name = "Fear", id = 5782,                  dur = 20,  color = { 1.00, 0.40, 0.70 }, cc = true },
+  { name = "Banish", id = 710,                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true, calm = true, invuln = true },
+  { name = "Enslave Demon", id = 1098,         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true, calm = true },
+  { name = "Death Coil", id = 6789,            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
 
   -- 0.13: the other classes (WoW Forever data, see project doc class-dots-cc.md).
   -- Not tracked on purpose: random procs, combo-point finishers, channels, self-centered AoE.
   -- Priest
-  { class = "PRIEST", name = "Shadow Word: Pain",   dur = 18, color = { 0.60, 0.25, 0.85 }, slot = "swp", tick = 3, school = 32 },
-  { class = "PRIEST", name = "Devouring Plague",    dur = 24, color = { 0.35, 0.80, 0.30 }, slot = "plague", tick = 3, school = 32 },
-  { class = "PRIEST", name = "Holy Fire",           dur = 10, color = { 1.00, 0.75, 0.25 }, slot = "holyfire", tick = 2, school = 2 },
-  { class = "PRIEST", name = "Shackle Undead",      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true, calm = true },
-  { class = "PRIEST", name = "Chastise",            dur = 2,  color = { 1.00, 0.90, 0.55 }, cc = true },
-  { class = "PRIEST", name = "Silence",             dur = 5,  color = { 0.55, 0.45, 0.80 }, cc = true },
+  { class = "PRIEST", name = "Shadow Word: Pain", id = 589,   dur = 18, color = { 0.60, 0.25, 0.85 }, slot = "swp", tick = 3, school = 32 },
+  { class = "PRIEST", name = "Devouring Plague", id = 2944,    dur = 24, color = { 0.35, 0.80, 0.30 }, slot = "plague", tick = 3, school = 32 },
+  { class = "PRIEST", name = "Holy Fire", id = 14914,           dur = 10, color = { 1.00, 0.75, 0.25 }, slot = "holyfire", tick = 2, school = 2 },
+  { class = "PRIEST", name = "Shackle Undead", id = 9484,      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true, calm = true },
+  { class = "PRIEST", name = "Chastise", id = 1277331,            dur = 2,  color = { 1.00, 0.90, 0.55 }, cc = true },
+  { class = "PRIEST", name = "Silence", id = 15487,             dur = 5,  color = { 0.55, 0.45, 0.80 }, cc = true },
   -- 0.14.3: Mind Soothe (15 s, humanoids; shorter aggro range). Calm: you soothe to avoid a pull, not to dot it
-  { class = "PRIEST", name = "Mind Soothe",         dur = 15, color = { 0.40, 0.85, 0.80 }, cc = true, calm = true },
+  { class = "PRIEST", name = "Mind Soothe", id = 453,         dur = 15, color = { 0.40, 0.85, 0.80 }, cc = true, calm = true },
   -- Druid
-  { class = "DRUID", name = "Moonfire",             dur = 12, color = { 0.55, 0.65, 1.00 }, slot = "moonfire", tick = 3, school = 64 },
-  { class = "DRUID", name = "Insect Swarm",         dur = 12, color = { 0.55, 0.80, 0.25 }, slot = "swarm", tick = 2, school = 8 },
-  { class = "DRUID", name = "Rake",                 dur = 9,  color = { 0.90, 0.30, 0.25 }, slot = "rake", tick = 3, school = 1 },
-  { class = "DRUID", name = "Lacerate",             dur = 15, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
-  { class = "DRUID", name = "Entangling Roots",     dur = 27, color = { 0.35, 0.70, 0.30 }, cc = true, tick = 3, school = 8 },
-  { class = "DRUID", name = "Hibernate",            dur = 40, color = { 0.45, 0.75, 0.55 }, cc = true, calm = true },
-  { class = "DRUID", name = "Bash",                 dur = 4,  color = { 0.80, 0.55, 0.35 }, cc = true },
-  { class = "DRUID", name = "Pounce",               dur = 2,  color = { 0.90, 0.70, 0.30 }, cc = true },
-  { class = "DRUID", name = "Feral Charge",         dur = 4,  color = { 0.70, 0.50, 0.30 }, cc = true },
+  { class = "DRUID", name = "Moonfire", id = 8921,             dur = 12, color = { 0.55, 0.65, 1.00 }, slot = "moonfire", tick = 3, school = 64 },
+  { class = "DRUID", name = "Insect Swarm", id = 5570,         dur = 12, color = { 0.55, 0.80, 0.25 }, slot = "swarm", tick = 2, school = 8 },
+  { class = "DRUID", name = "Rake", id = 1822,                 dur = 9,  color = { 0.90, 0.30, 0.25 }, slot = "rake", tick = 3, school = 1 },
+  { class = "DRUID", name = "Lacerate", id = 1328617,             dur = 15, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
+  { class = "DRUID", name = "Entangling Roots", id = 339,     dur = 27, color = { 0.35, 0.70, 0.30 }, cc = true, tick = 3, school = 8 },
+  { class = "DRUID", name = "Hibernate", id = 2637,            dur = 40, color = { 0.45, 0.75, 0.55 }, cc = true, calm = true },
+  { class = "DRUID", name = "Bash", id = 5211,                 dur = 4,  color = { 0.80, 0.55, 0.35 }, cc = true },
+  { class = "DRUID", name = "Pounce", id = 9005,               dur = 2,  color = { 0.90, 0.70, 0.30 }, cc = true },
+  { class = "DRUID", name = "Feral Charge", id = 16979,         dur = 4,  color = { 0.70, 0.50, 0.30 }, cc = true },
   -- Hunter (traps: the timer starts when the trap goes off, see "Traps")
-  { class = "HUNTER", name = "Serpent Sting",       dur = 15, color = { 0.35, 0.80, 0.30 }, group = "sting", slot = "sting", tick = 3, school = 8 },
-  { class = "HUNTER", name = "Viper Sting",         dur = 8,  color = { 0.40, 0.55, 1.00 }, group = "sting", slot = "sting" },
-  { class = "HUNTER", name = "Lacerate",            dur = 21, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
-  { class = "HUNTER", name = "Immolation Trap",     dur = 15, color = { 1.00, 0.45, 0.10 }, trap = "fire", tick = 3, school = 4 },
-  { class = "HUNTER", name = "Explosive Trap",      dur = 20, color = { 1.00, 0.30, 0.15 }, trap = "fire", aoe = true, tick = 2, school = 4 },
-  { class = "HUNTER", name = "Freezing Trap",       dur = 20, color = { 0.55, 0.80, 1.00 }, trap = "aura", cc = true, calm = true },
-  { class = "HUNTER", name = "Scare Beast",         dur = 20, color = { 0.75, 0.55, 0.30 }, cc = true },
-  { class = "HUNTER", name = "Scatter Shot",        dur = 4,  color = { 0.85, 0.75, 0.40 }, cc = true },
-  { class = "HUNTER", name = "Counterattack",       dur = 5,  color = { 0.70, 0.60, 0.45 }, cc = true },
+  { class = "HUNTER", name = "Serpent Sting", id = 1978,       dur = 15, color = { 0.35, 0.80, 0.30 }, group = "sting", slot = "sting", tick = 3, school = 8 },
+  { class = "HUNTER", name = "Viper Sting", id = 3034,         dur = 8,  color = { 0.40, 0.55, 1.00 }, group = "sting", slot = "sting" },
+  { class = "HUNTER", name = "Lacerate", id = 24118,            dur = 21, color = { 0.80, 0.15, 0.15 }, slot = "lacerate", tick = 3, school = 1 },
+  { class = "HUNTER", name = "Immolation Trap", id = 13795,     dur = 15, color = { 1.00, 0.45, 0.10 }, trap = "fire", tick = 3, school = 4 },
+  { class = "HUNTER", name = "Explosive Trap", id = 13813,      dur = 20, color = { 1.00, 0.30, 0.15 }, trap = "fire", aoe = true, tick = 2, school = 4 },
+  { class = "HUNTER", name = "Freezing Trap", id = 1499,       dur = 20, color = { 0.55, 0.80, 1.00 }, trap = "aura", cc = true, calm = true },
+  { class = "HUNTER", name = "Scare Beast", id = 1513,         dur = 20, color = { 0.75, 0.55, 0.30 }, cc = true },
+  { class = "HUNTER", name = "Scatter Shot", id = 19503,        dur = 4,  color = { 0.85, 0.75, 0.40 }, cc = true },
+  { class = "HUNTER", name = "Counterattack", id = 19306,       dur = 5,  color = { 0.70, 0.60, 0.45 }, cc = true },
   -- Rogue
-  { class = "ROGUE", name = "Garrote",              dur = 18, color = { 0.85, 0.20, 0.20 }, slot = "garrote", tick = 3, school = 1 },
-  { class = "ROGUE", name = "Sap",                  dur = 45, color = { 0.65, 0.65, 0.75 }, cc = true, calm = true },
-  { class = "ROGUE", name = "Blind",                dur = 10, color = { 0.75, 0.75, 0.55 }, cc = true, calm = true },
-  { class = "ROGUE", name = "Gouge",                dur = 4,  color = { 0.85, 0.55, 0.35 }, cc = true },
-  { class = "ROGUE", name = "Cheap Shot",           dur = 4,  color = { 0.90, 0.80, 0.30 }, cc = true },
+  { class = "ROGUE", name = "Garrote", id = 703,              dur = 18, color = { 0.85, 0.20, 0.20 }, slot = "garrote", tick = 3, school = 1 },
+  { class = "ROGUE", name = "Sap", id = 6770,                  dur = 45, color = { 0.65, 0.65, 0.75 }, cc = true, calm = true },
+  { class = "ROGUE", name = "Blind", id = 2094,                dur = 10, color = { 0.75, 0.75, 0.55 }, cc = true, calm = true },
+  { class = "ROGUE", name = "Gouge", id = 1776,                dur = 4,  color = { 0.85, 0.55, 0.35 }, cc = true },
+  { class = "ROGUE", name = "Cheap Shot", id = 1833,           dur = 4,  color = { 0.90, 0.80, 0.30 }, cc = true },
   -- Shaman
-  { class = "SHAMAN", name = "Flame Shock",         dur = 12, color = { 1.00, 0.45, 0.10 }, slot = "flameshock", tick = 3, school = 4 },
+  { class = "SHAMAN", name = "Flame Shock", id = 8050,         dur = 12, color = { 1.00, 0.45, 0.10 }, slot = "flameshock", tick = 3, school = 4 },
   -- Mage (the burn after Fireball, Pyroblast and Frostfire Bolt)
-  { class = "MAGE", name = "Fireball",              dur = 8,  color = { 1.00, 0.50, 0.10 }, tick = 2, school = 4 },
-  { class = "MAGE", name = "Pyroblast",             dur = 12, color = { 1.00, 0.30, 0.10 }, tick = 3, school = 4 },
-  { class = "MAGE", name = "Frostfire Bolt",        dur = 9,  color = { 0.55, 0.55, 1.00 } },
-  { class = "MAGE", name = "Polymorph",             dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true, calm = true },
-  { class = "MAGE", name = "Polymorph: Cow",        dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true, calm = true },
+  { class = "MAGE", name = "Fireball", id = 133,              dur = 8,  color = { 1.00, 0.50, 0.10 }, tick = 2, school = 4 },
+  { class = "MAGE", name = "Pyroblast", id = 11366,             dur = 12, color = { 1.00, 0.30, 0.10 }, tick = 3, school = 4 },
+  { class = "MAGE", name = "Frostfire Bolt", id = 401502,        dur = 9,  color = { 0.55, 0.55, 1.00 } },
+  { class = "MAGE", name = "Polymorph", id = 118,             dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true, calm = true },
+  { class = "MAGE", name = "Polymorph: Cow", id = 28270,        dur = 50, color = { 0.85, 0.55, 0.95 }, group = "poly", cc = true, calm = true },
   -- Paladin
-  { class = "PALADIN", name = "Hammer of Justice",  dur = 6,  color = { 1.00, 0.85, 0.35 }, cc = true },
-  { class = "PALADIN", name = "Repentance",         dur = 6,  color = { 0.95, 0.95, 0.75 }, cc = true, calm = true },
-  { class = "PALADIN", name = "Turn Undead",        dur = 20, color = { 1.00, 0.95, 0.60 }, cc = true },
+  { class = "PALADIN", name = "Hammer of Justice", id = 853,  dur = 6,  color = { 1.00, 0.85, 0.35 }, cc = true },
+  { class = "PALADIN", name = "Repentance", id = 20066,         dur = 6,  color = { 0.95, 0.95, 0.75 }, cc = true, calm = true },
+  { class = "PALADIN", name = "Turn Undead", id = 2878,        dur = 20, color = { 1.00, 0.95, 0.60 }, cc = true },
   -- Warrior
-  { class = "WARRIOR", name = "Rend",               dur = 21, color = { 0.85, 0.15, 0.15 }, slot = "rend", tick = 3, school = 1 },
-  { class = "WARRIOR", name = "Intimidating Shout", dur = 8,  color = { 0.80, 0.55, 0.30 }, cc = true },
-  { class = "WARRIOR", name = "Concussion Blow",    dur = 5,  color = { 0.90, 0.75, 0.35 }, cc = true },
-  { class = "WARRIOR", name = "Intercept",          dur = 3,  color = { 0.75, 0.60, 0.40 }, cc = true },
+  { class = "WARRIOR", name = "Rend", id = 772,               dur = 21, color = { 0.85, 0.15, 0.15 }, slot = "rend", tick = 3, school = 1 },
+  { class = "WARRIOR", name = "Intimidating Shout", id = 5246, dur = 8,  color = { 0.80, 0.55, 0.30 }, cc = true },
+  { class = "WARRIOR", name = "Concussion Blow", id = 12809,    dur = 5,  color = { 0.90, 0.75, 0.35 }, cc = true },
+  { class = "WARRIOR", name = "Intercept", id = 20252,          dur = 3,  color = { 0.75, 0.60, 0.40 }, cc = true },
 }
 -- fixed rows per enemy, per class (gray placeholders), and the spells for test/preview
 local CLASS_SLOTS = {
@@ -211,10 +213,27 @@ end
 local function isMine(s) return s.class == (myClass() or "WARLOCK") end
 -- only the spells of the class you play (two classes can share a name, e.g. Lacerate)
 local DEF_BY_NAME, SLOT_ORDER = {}, {}
+local LOOK -- 0.16: declared here so code above its table (resist messages) can use LOOK.spell
 local function rebuildDefs()
   wipe(DEF_BY_NAME)
   wipe(SLOT_ORDER)
   for _, s in ipairs(SPELLS) do if isMine(s) then DEF_BY_NAME[s.name] = s end end
+  -- 0.16: the client's own name for every spell (German, Russian, Chinese ... clients, and
+  -- Forever's renames like Enslave -> Subjugate Demon), looked up by spell ID. The English
+  -- name stays the key for everything saved (colors, statistics, immunities); the client's
+  -- name is what the casts, the spellbook and the auras report, and what is shown.
+  for _, s in ipairs(SPELLS) do
+    if isMine(s) then
+      local loc
+      if s.id then
+        if C_Spell and C_Spell.GetSpellName then loc = C_Spell.GetSpellName(s.id) end
+        if not loc and GetSpellInfo then loc = GetSpellInfo(s.id) end
+      end
+      if type(loc) ~= "string" or (issecretvalue and issecretvalue(loc)) or loc == "" then loc = nil end
+      s.loc = loc or s.loc or s.name
+      if not DEF_BY_NAME[s.loc] then DEF_BY_NAME[s.loc] = s end
+    end
+  end
   for _, slot in ipairs(CLASS_SLOTS[myClass() or "WARLOCK"] or {}) do SLOT_ORDER[#SLOT_ORDER + 1] = slot end
 end
 local function sampleSpells()
@@ -286,7 +305,7 @@ local function spellInfo(id)
   if def.cc and db and db.trackCC == false then return nil end
   local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
   local descDur = parseDuration(desc)
-  local info = { id = id, name = name, def = def, group = def.group, slot = def.slot, color = def.color,
+  local info = { id = id, name = def.name, shown = name, def = def, group = def.group, slot = def.slot, color = def.color,
     icon = iconOf(id), descDur = descDur, dmg = def.tick and KILL.parseDamage(desc) or nil }
   spellCache[id] = info
   return info
@@ -302,9 +321,10 @@ end
 ---------------------------------------------------------------------------
 local function addKnown(name, id)
   name, id = str(name), num(id)
-  if not name or not DEF_BY_NAME[name] then return end
+  local def = name and DEF_BY_NAME[name]
+  if not def then return end
   if id then nameByID[id] = name end
-  known[name] = id or known[name] or true
+  known[def.name] = id or known[def.name] or true -- 0.16: always under the English key
 end
 
 local function scanModern()
@@ -361,7 +381,7 @@ end
 local function scanByName()
   if not (C_Spell and C_Spell.GetSpellInfo) then return false end
   for _, s in ipairs(SPELLS) do
-    local info = isMine(s) and plain(C_Spell.GetSpellInfo, s.name)
+    local info = isMine(s) and plain(C_Spell.GetSpellInfo, s.loc or s.name)
     local id = type(info) == "table" and num(info.spellID)
     if id then
       local isKnown = (IsPlayerSpell and plain(IsPlayerSpell, id)) or (IsSpellKnown and plain(IsSpellKnown, id))
@@ -584,8 +604,8 @@ local function failDot(m, d, action)
     if d.prevGroup then m.dots[d.prevGroup.info.id] = d.prevGroup end
   end
   local label = FAIL[action] or action
-  if banished then label = label .. " (" .. banished.info.name .. ")" end
-  addFlash(m, d.info.name .. ": " .. label, 1, 0.3, 0.3)
+  if banished then label = label .. " (" .. LOOK.spell(banished.info) .. ")" end
+  addFlash(m, LOOK.spell(d.info) .. ": " .. label, 1, 0.3, 0.3)
   if banished then
     -- nothing recorded
   elseif action == "IMMUNE" then
@@ -597,7 +617,7 @@ local function failDot(m, d, action)
   end
   dbg("FAIL " .. d.info.name .. " on " .. m.name .. " [" .. short(m.guid) .. "]: " .. action ..
     (banished and " (banished, not stored)" or "") .. (d.prev and " (old timer kept)" or ""))
-  if db.chat then say(string.format("|cffff5555%s %s|r on %s", d.info.name, label:lower(), m.hidden and "your target" or m.name)) end
+  if db.chat then say(string.format("|cffff5555%s %s|r on %s", LOOK.spell(d.info), label:lower(), m.hidden and "your target" or m.name)) end
   if action == "IMMUNE" and not banished then
     local npc = npcID(m.guid)
     if npc then
@@ -937,7 +957,7 @@ end
 local ROW_H, WIDTH, GAP = 16, 220, 6
 
 -- look settings (font size, bar texture, colors per DoT, combat state)
-local LOOK = {
+LOOK = {
   FONTS = {
     small  = { hdr = "GameFontNormalSmall", txt = "GameFontHighlightSmall", row = 16, head = 15, label = "Small" },
     normal = { hdr = "GameFontNormal", txt = "GameFontHighlight", row = 19, head = 17, label = "Normal" },
@@ -962,6 +982,12 @@ end
 function LOOK.color(info)
   local c = db and db.colors and db.colors[info.name]
   return c or info.color
+end
+-- 0.16: a spell's name as this client shows it (info table, definition or English name)
+function LOOK.spell(x)
+  if type(x) == "table" then return x.shown or (x.def and x.def.loc) or x.loc or x.name end
+  local d = x and DEF_BY_NAME[x]
+  return d and d.loc or x
 end
 -- light bar colors get dark text (perceived brightness)
 function LOOK.isLight(c)
@@ -1666,7 +1692,7 @@ render.bars = function(list, tg, W)
         b.icon:SetDesaturated(false)
         b.icon:SetAlpha(1)
         b.bg:SetColorTexture(0, 0, 0, 0.5)
-        b.label:SetText(r.dot.info.name)
+        b.label:SetText(LOOK.spell(r.dot.info))
         local c = LOOK.color(r.dot.info)
         if r.dot.lost then
           b:SetStatusBarColor(0.4, 0.4, 0.4)
@@ -1689,7 +1715,7 @@ render.bars = function(list, tg, W)
         b:SetMinMaxValues(0, 1)
         b:SetValue(0)
         b:SetAlpha(1)
-        b.label:SetText(r.name)
+        b.label:SetText(LOOK.spell(r.name))
         if r.immune then
           b.label:SetTextColor(0.6, 0.3, 0.3)
           b.time:SetText("immune")
@@ -2533,7 +2559,7 @@ end
 local function knownList()
   local names = {}
   for _, s in ipairs(SPELLS) do
-    if known[s.name] then names[#names + 1] = s.name end
+    if known[s.name] then names[#names + 1] = LOOK.spell(s) end
   end
   if #names == 0 then return "|cff888888nothing found yet|r" end
   local text = table.concat(names, ", ")
@@ -2699,7 +2725,7 @@ local function buildLookPage(pg, COL)
     btn.text:SetWidth(82)
     btn.text:SetJustifyH("LEFT")
     btn.text:SetWordWrap(false)
-    btn.text:SetText((sp.name:gsub("^Curse of the ", "C. "):gsub("^Curse of ", "C. "):gsub("^Bane of ", "B. ")))
+    btn.text:SetText((LOOK.spell(sp):gsub("^Curse of the ", "C. "):gsub("^Curse of ", "C. "):gsub("^Bane of ", "B. ")))
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     btn.sp = sp
     btn:SetScript("OnClick", function(self)
@@ -2710,7 +2736,7 @@ local function buildLookPage(pg, COL)
         dirty = true
       end)
     end)
-    tip(btn, sp.name, "Click to pick its color.")
+    tip(btn, LOOK.spell(sp), "Click to pick its color.")
     btn.refresh = function()
       local c = LOOK.color(btn.sp)
       btn.sw:SetColorTexture(c[1], c[2], c[3])
@@ -2870,7 +2896,7 @@ local function buildStatsPage(pg)
         local parts = { string.format("%d cast%s", sp.c, sp.c == 1 and "" or "s") }
         if sp.r > 0 then parts[#parts + 1] = string.format("|cffff7755%d resisted (%d%%)|r", sp.r, resisted) end
         if sp.i > 0 then parts[#parts + 1] = string.format("|cffcc5555%d immune|r", sp.i) end
-        lines[#lines + 1] = "    " .. name .. ": " .. table.concat(parts, ", ")
+        lines[#lines + 1] = "    " .. LOOK.spell(name) .. ": " .. table.concat(parts, ", ")
       end
     end
     if #lines == 0 then lines[1] = "|cff888888Nothing recorded yet. Fight something!|r" end
@@ -3397,7 +3423,7 @@ SlashCmdList.DOTWATCH = function(msg)
     scanSpellbook("command")
     say("Spellbook read via " .. bookMethod .. ".")
     for _, s in ipairs(SPELLS) do
-      if known[s.name] then say("  " .. s.name .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")) end
+      if known[s.name] then say("  " .. LOOK.spell(s) .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")) end
     end
     if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  Siphon Life: not known") end
   elseif cmd == "learned" then
@@ -3405,7 +3431,7 @@ SlashCmdList.DOTWATCH = function(msg)
     for id, dur in pairs(db.learned) do
       any = true
       local info = spellInfo(id)
-      say(string.format("%s (%d): %s sec", info and info.name or "?", id, tostring(dur)))
+      say(string.format("%s (%d): %s sec", info and LOOK.spell(info) or "?", id, tostring(dur)))
     end
     if not any then say("No durations learned yet (happens out of combat).") end
   elseif cmd == "plates" then
