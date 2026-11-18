@@ -18,6 +18,7 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.14.3: Priest Mind Soothe is tracked (control timer, 15 s).
 -- New in 0.14.2: move mode is obvious (gold edge, tab with "Move mode" + Lock button,
 -- tooltip); new players took the purple unlocked box for the normal look.
 -- New in 0.14.1: bug fixes from the code review (Table: own column per curse/control
@@ -39,7 +40,7 @@
 -- Commands: /dw help
 
 local ADDON_NAME = ...
-local VERSION = "0.14.2"
+local VERSION = "0.14.3"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -126,6 +127,8 @@ local SPELLS = {
   { class = "PRIEST", name = "Shackle Undead",      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true, calm = true },
   { class = "PRIEST", name = "Chastise",            dur = 2,  color = { 1.00, 0.90, 0.55 }, cc = true },
   { class = "PRIEST", name = "Silence",             dur = 5,  color = { 0.55, 0.45, 0.80 }, cc = true },
+  -- 0.14.3: Mind Soothe (15 s, humanoids; shorter aggro range). Calm: you soothe to avoid a pull, not to dot it
+  { class = "PRIEST", name = "Mind Soothe",         dur = 15, color = { 0.40, 0.85, 0.80 }, cc = true, calm = true },
   -- Druid
   { class = "DRUID", name = "Moonfire",             dur = 12, color = { 0.55, 0.65, 1.00 }, slot = "moonfire", tick = 3, school = 64 },
   { class = "DRUID", name = "Insect Swarm",         dur = 12, color = { 0.55, 0.80, 0.25 }, slot = "swarm", tick = 2, school = 8 },
@@ -2671,7 +2674,7 @@ local function buildTimersPage(pg)
 
   makeSection(pg, "Control", y)
   y = y - 22
-  makeCheck(pg, "Crowd-control timers (Fear, Banish, Polymorph, Sap ...)", "Shown while active, below the DoTs of that enemy.",
+  makeCheck(pg, "Crowd-control timers (Fear, Banish, Polymorph, Mind Soothe ...)", "Shown while active, below the DoTs of that enemy.",
     function() return db.trackCC ~= false end, function(v) db.trackCC = v wipe(spellCache) end):SetPoint("TOPLEFT", 26, y)
   y = y - 36
 
