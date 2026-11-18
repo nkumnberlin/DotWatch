@@ -259,4 +259,7 @@ ns.STRINGS.zhCN = {
   ["The DoT's icon left of its bar."] = "DoT图标在条的左边。",
   ["The DoT's icon right of its bar."] = "DoT图标在条的右边。",
   ["Icon size"] = "图标大小",
+  -- 0.19.4
+  ["Tick marks on the mini bars"] = "迷你条上的跳数标记",
+  ["Small marks where your DoT ticks next, like in the window."] = "小标记显示DoT下一次跳的位置，和窗口里一样。",
 }

@@ -258,4 +258,7 @@ ns.STRINGS.deDE = {
   ["The DoT's icon left of its bar."] = "Das Symbol des DoTs links vom Balken.",
   ["The DoT's icon right of its bar."] = "Das Symbol des DoTs rechts vom Balken.",
   ["Icon size"] = "Symbolgröße",
+  -- 0.19.4
+  ["Tick marks on the mini bars"] = "Tick-Striche an den Mini-Balken",
+  ["Small marks where your DoT ticks next, like in the window."] = "Kleine Striche, wo dein DoT als Nächstes tickt, wie im Fenster.",
 }

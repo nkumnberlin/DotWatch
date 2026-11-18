@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.19.3"
+local VERSION = "0.19.4"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -1782,9 +1782,18 @@ function LOOK.paintPlate(o, rows, missing, t, fight, bt)
         row:SetStatusBarColor(c[1], c[2], c[3])
         row:SetMinMaxValues(0, math.max(0.1, r.d.expires - r.d.start))
         row:SetValue(math.max(0, r.d.expires - t))
+        -- 0.19.4: tick marks like in the window; only when the bar's width can be read
+        -- (a plate's size may be secret on Forever: then no marks rather than an error)
+        local w = db.plateTicks ~= false and plain(row.GetWidth, row)
+        if type(w) == "number" and w > 0 and LOOK.placeTicks then
+          LOOK.placeTicks(row, row, r.d, t, r.d.expires - r.d.start)
+        elseif row.ticks then
+          for _, mk in ipairs(row.ticks) do mk:Hide() end
+        end
       else
         row.bg:SetColorTexture(1, 0.23, 0.18, fight and 0.5 * blink or 0.15)
         row:SetValue(0)
+        if row.ticks then for _, mk in ipairs(row.ticks) do mk:Hide() end end
       end
       row:Show()
     end
@@ -2264,6 +2273,8 @@ local function placeTicks(b, bar, d, t, total)
   end
   for k = count + 1, #b.ticks do b.ticks[k]:Hide() end
 end
+
+LOOK.placeTicks = placeTicks -- 0.19.4: also used by the nameplate mini bars
 
 local function timeText(fs, d, left)
   if d.lost then
@@ -3268,7 +3279,7 @@ function LOOK.buildEnemiesPage(g)
   makeSection(g, "Preview", top, COL + 16)
   local box = CreateFrame("Frame", nil, g, BACKDROP_TEMPLATE)
   box:SetPoint("TOPLEFT", COL + 16, top - 22)
-  box:SetPoint("BOTTOMRIGHT", -22, 112)
+  box:SetPoint("BOTTOMRIGHT", -22, 140)
   -- 0.19.3: icons on the mini bars (under the preview: the left column is full)
   local function radioLine(label, yy, items, get, set)
     local fs = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -3283,16 +3294,18 @@ function LOOK.buildEnemiesPage(g)
       rx = rx + 26 + rb.text:GetStringWidth() + 10
     end
   end
-  radioLine("Icons on the mini bars", -364, {
+  radioLine("Icons on the mini bars", -336, {
     { "off", "Off", "Only the bars." },
     { "left", "Before", "The DoT's icon left of its bar." },
     { "right", "After", "The DoT's icon right of its bar." },
   }, function() return db.plateBarIcons or "off" end, function(v) db.plateBarIcons = v end)
-  radioLine("Icon size", -408, {
+  radioLine("Icon size", -378, {
     { "s", "Small", "10 px" },
     { "m", "Medium", "14 px" },
     { "l", "Large", "18 px" },
   }, function() return db.plateBarIconSize or "m" end, function(v) db.plateBarIconSize = v end)
+  makeCheck(g, "Tick marks on the mini bars", "Small marks where your DoT ticks next, like in the window.",
+    function() return db.plateTicks ~= false end, function(v) db.plateTicks = v end):SetPoint("TOPLEFT", COL + 14, -422)
   if box.SetBackdrop then
     box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
       edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
@@ -3302,7 +3315,7 @@ function LOOK.buildEnemiesPage(g)
   end
   local plates = {}
   local function fake(i, caption)
-    local p = { y = -36 - (i - 1) * 96 }
+    local p = { y = -32 - (i - 1) * 88 }
     local hb = CreateFrame("StatusBar", nil, box)
     hb:SetSize(130, 12)
     hb:SetPoint("TOPLEFT", box, "TOPLEFT", 36, p.y)

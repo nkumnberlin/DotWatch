@@ -261,4 +261,7 @@ ns.STRINGS.zhTW = {
   ["The DoT's icon left of its bar."] = "DoT圖示在條的左邊。",
   ["The DoT's icon right of its bar."] = "DoT圖示在條的右邊。",
   ["Icon size"] = "圖示大小",
+  -- 0.19.4
+  ["Tick marks on the mini bars"] = "迷你條上的跳數標記",
+  ["Small marks where your DoT ticks next, like in the window."] = "小標記顯示DoT下一次跳的位置，和視窗裡一樣。",
 }

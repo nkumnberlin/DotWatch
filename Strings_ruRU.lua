@@ -259,4 +259,7 @@ ns.STRINGS.ruRU = {
   ["The DoT's icon left of its bar."] = "Значок DoT слева от его полосы.",
   ["The DoT's icon right of its bar."] = "Значок DoT справа от его полосы.",
   ["Icon size"] = "Размер значков",
+  -- 0.19.4
+  ["Tick marks on the mini bars"] = "Метки тиков на мини-полосах",
+  ["Small marks where your DoT ticks next, like in the window."] = "Маленькие метки, где ваш DoT тикнет дальше, как в окне.",
 }
