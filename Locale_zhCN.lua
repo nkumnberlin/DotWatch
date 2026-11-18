@@ -1,9 +1,9 @@
 -- DotWatch: zhCN tooltip reading (DoT damage and duration), used when the English patterns
--- in DotWatch.lua don't read a spell's description. Copied unchanged below this header from
+-- in DotWatch.lua don't read a spell's description. Copied below this header from
 -- Smooth Animated Bars 1.11.0 (Copyright (c) 2026 Jordan, MIT License), which ported it from
 -- DoesItDie 0.9.3 (Copyright (c) 2026 Joe Greive, MIT License). Both licence notices are in
--- Locale.lua. DotWatch only uses parseDot; the names table and the combo-point helpers come
--- along unused (DotWatch finds spells by spell ID).
+-- Locale.lua. 0.18.1: DotWatch only uses parseDot, so the spell-name table and the combo-point
+-- counter were removed (DotWatch finds spells by spell ID); everything else is unchanged.
 --
 -- Chinese (zhCN and zhTW) spell descriptions and names. Registers itself with Locale.lua;
 -- ported from DoesItDie 0.9.3 by Joe Greive (MIT licence, notice in Locale.lua).
@@ -53,39 +53,6 @@ end
 -- Tooltips that name no school anywhere: Corruption's "腐蚀目标，在12秒内造成累计40点伤害" (Shadow).
 local WORDING_SCHOOLS = { { "腐蚀目标", 32 } }
 
--- Chinese names of the spells in Dots.lua's name-keyed tables: Forever's simplified ones (Wowhead), then the
--- same in traditional characters. Names the client reports by spell ID are added at load anyway (Locale.lua), so
--- these mostly matter for the tests.
-local NAMES = {
-    ["Insect Swarm"] = { "虫群", "蟲群" },
-    ["Bane of Agony"] = { "痛苦灾祸", "痛苦災禍" },
-    ["Curse of Agony"] = { "痛苦诅咒", "痛苦詛咒" },
-    ["Corruption"] = { "腐蚀术", "腐蝕術" },
-    ["Fireball"] = { "火球术", "火球術" },
-    ["Holy Fire"] = { "神圣之火", "神聖之火" },
-    ["Rip"] = { "撕扯" },
-    ["Rupture"] = { "割裂" },
-    ["Siphon Life"] = { "生命虹吸" },
-    ["Serpent Sting"] = { "毒蛇钉刺", "毒蛇釘刺" },
-    ["Pyroblast"] = { "炎爆术", "炎爆術" },
-    ["Rain of Fire"] = { "火焰之雨" },
-    ["Hellfire"] = { "地狱烈焰", "地獄烈焰" },
-    ["Blizzard"] = { "暴风雪", "暴風雪" },
-    ["Flamestrike"] = { "烈焰风暴", "烈焰風暴" },
-    ["Consecration"] = { "奉献", "奉獻" },
-    ["Hurricane"] = { "飓风", "颶風" },
-    ["Volley"] = { "乱射", "亂射" },
-    ["Drain Life"] = { "吸取生命" },
-    ["Drain Soul"] = { "吸取灵魂", "吸取靈魂" },
-    ["Drain Mana"] = { "吸取法力" },
-    ["Health Funnel"] = { "生命通道" },
-    ["Mind Flay"] = { "精神鞭笞" },
-    ["Arcane Missiles"] = { "奥术飞弹", "奧術飛彈" },
-    ["Starshards"] = { "星辰碎片" },
-    ["Immolation Trap"] = { "献祭陷阱", "獻祭陷阱" },
-    ["Explosive Trap"] = { "爆炸陷阱" },
-}
-
 local function normalize(desc)
     desc = desc:gsub("[\192-\255][\128-\191]*", TRADITIONAL)
     return (desc:gsub("([0-9]),([0-9][0-9][0-9])", "%1%2"))
@@ -93,19 +60,6 @@ end
 
 local function isFinisher(desc)
     return desc:find("终结技", 1, true) ~= nil
-end
-
--- "奖励1个连击点数" (Rake, Sinister Strike), "奖励1个连击点" (Claw), "奖励2点连击点数" (Cheap Shot), and Gouge's
--- "奖励1个$l连击点数" (a plural marker left in the text). The counter is checked as a whole string: a byte class
--- like [个点] would split those 3-byte characters. A chance ("有100%的几率奖励1个连击点数", Shank with Boot Knife,
--- where the English says 2) is no award.
-local COMBO_COUNTERS = { ["个"] = true, ["点"] = true, ["个$l"] = true, ["点$l"] = true }
-local function comboPointsAwarded(desc)
-    desc = normalize(desc)
-    for at, points, counter in desc:gmatch("()奖励([0-9]+)([^0-9]-)连击点") do
-        local before = desc:sub(math.max(1, at - 6), at - 1)
-        if COMBO_COUNTERS[counter] and before ~= "几率" and before ~= "机率" then return tonumber(points) end
-    end
 end
 
 -- Per combo point count: "1点:12秒内44点伤害" (Rip) or "1点:25点伤害，持续8秒" (Rupture).
@@ -186,6 +140,4 @@ ns.locale.register({
     tag = "zhCN",
     parseDot = parseDot,
     isFinisher = function(desc) return isFinisher(normalize(desc)) end,
-    comboPointsAwarded = comboPointsAwarded,
-    names = NAMES,
 })

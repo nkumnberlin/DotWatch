@@ -18,6 +18,9 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.18.1: review fixes. The language stays fixed until /reload (no mixed texts after
+-- a click), /dw lang <auto|en|de|ru|zhCN|zhTW>, long spell names shortened in any language,
+-- spells without a name from their ID are reported (/dw spells), corrected translations.
 -- New in 0.18: interface in German, Russian and Chinese (Strings*.lua), chosen by the
 -- client language or the option General > Language.
 -- New in 0.17: tooltips are read in German, Russian and Chinese too (Locale*.lua), so
@@ -49,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.18"
+local VERSION = "0.18.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -235,6 +238,7 @@ local function rebuildDefs()
         if not loc and GetSpellInfo then loc = GetSpellInfo(s.id) end
       end
       if type(loc) ~= "string" or (issecretvalue and issecretvalue(loc)) or loc == "" then loc = nil end
+      s.noLoc = (s.id and not loc) or nil -- 0.18.1: this ID has no name here (wrong ID on Forever?)
       s.loc = loc or s.loc or s.name
       if not DEF_BY_NAME[s.loc] then DEF_BY_NAME[s.loc] = s end
     end
@@ -430,6 +434,10 @@ local function scanSpellbook(why)
     if known[s.name] then list[#list + 1] = s.name .. "=" .. tostring(known[s.name]) end
   end
   dbg("SPELLBOOK (" .. (why or "?") .. ") via " .. bookMethod .. ": " .. (#list > 0 and table.concat(list, ", ") or "nothing"))
+  -- 0.18.1: on a non-English client a spell without a name from its ID is never recognized
+  wipe(list)
+  for _, s in ipairs(SPELLS) do if isMine(s) and s.noLoc then list[#list + 1] = s.name .. " (" .. s.id .. ")" end end
+  if #list > 0 then dbg("NO NAME for spell ID: " .. table.concat(list, ", ")) end
   dirty = true
 end
 
@@ -1011,6 +1019,24 @@ function LOOK.spell(x)
   if type(x) == "table" then return x.shown or (x.def and x.def.loc) or x.loc or x.name end
   local d = x and DEF_BY_NAME[x]
   return d and d.loc or x
+end
+-- 0.18.1: fit a spell name into `width` on one line, in any language: the English curse/bane
+-- prefixes become "C." / "B.", then word after word (but the last) is cut to its first letter
+-- ("Fluch der Elemente" -> "F. d. Elemente", "Проклятие стихий" -> "П. стихий")
+function LOOK.shorten(fs, text, width)
+  text = text:gsub("^Curse of the ", "C. "):gsub("^Curse of ", "C. "):gsub("^Bane of ", "B. ")
+  fs:SetText(text)
+  local words = {}
+  for w in text:gmatch("%S+") do words[#words + 1] = w end
+  local i = 1
+  while i < #words and (fs:GetStringWidth() or 0) > width do
+    local first = words[i]:match("^[\1-\127\194-\244][\128-\191]*")
+    if first and #first < #words[i] and not words[i]:find("%.$") then
+      words[i] = first .. "."
+      fs:SetText(table.concat(words, " "))
+    end
+    i = i + 1
+  end
 end
 -- light bar colors get dark text (perceived brightness)
 function LOOK.isLight(c)
@@ -2339,7 +2365,13 @@ ev:SetScript("OnEvent", function(_, event, ...)
     applyPos() -- broken (secret) positions from 0.10-0.12 fall back to the default spot
     dirty = true
     dbg("LOADED " .. VERSION)
-    -- 0.18: texts made while loading used the client language; the saved one is known now
+    -- 0.18: texts made while loading used the client language; the saved one is known now.
+    -- 0.18.1: from here on the language stays fixed until /reload
+    local lang = KILL.ns.freezeLanguage()
+    if not KILL.ns.readable(lang) then
+      -- in English on purpose: this client's font may not show the chosen language
+      say("Interface language " .. lang .. ". Can't read it? Type /dw lang auto, then /reload.")
+    end
     anchorText:SetText(L["DotWatch (drag me)"])
     lockBtn:SetText(L["Lock"])
     moveText:SetText(L["Move mode: drag me"])
@@ -2425,7 +2457,7 @@ local function testBars()
     { "Test-0-0-0-0-2-CCC", "Blackrock Bootlegger", { s1 }, { 1 } },
   }
   for _, s in ipairs(samples) do
-    local m = getMob(s[1], s[2])
+    local m = getMob(s[1], L[s[2]]) -- 0.18.1: sample enemy names translated too
     for i, name in ipairs(s[3]) do
       local id = type(known[name]) == "number" and known[name] or nil
       local def = DEF_BY_NAME[name] or SPELLS[1]
@@ -2454,11 +2486,14 @@ local function tryTemplate(kind, parent, template)
   return CreateFrame(kind, nil, parent), false
 end
 
-local function tip(widget, title, text)
+-- title/text in English (translated here); raw = true: they are final already (0.18.1: no
+-- second lookup of a translated text)
+local function tip(widget, title, text, raw)
+  if not raw then title, text = L[title], text and L[text] end
   widget:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L[title], 1, 0.82, 0)
-    if text then GameTooltip:AddLine(L[text], 1, 1, 1, true) end
+    GameTooltip:SetText(title, 1, 0.82, 0)
+    if text then GameTooltip:AddLine(text, 1, 1, 1, true) end
     GameTooltip:Show()
   end)
   widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2499,7 +2534,7 @@ local function makeCheck(parent, label, help, get, set)
     set(self:GetChecked() and true or false)
     dirty = true
   end)
-  tip(cb, label, help)
+  tip(cb, label, help, true)
   cb.isCheck = true
   cb.refresh = function() cb:SetChecked(get() and true or false) end
   controls[#controls + 1] = cb
@@ -2617,7 +2652,7 @@ local function makeRadio(parent, label, help, value, get, set)
     for _, c in ipairs(controls) do c.refresh() end
     dirty = true
   end)
-  tip(rb, label, help)
+  tip(rb, label, help, true)
   rb.refresh = function() rb:SetChecked(get() == value) end
   controls[#controls + 1] = rb
   return rb
@@ -2645,7 +2680,7 @@ local function buildSample()
   end
   local function len(name) local d = DEF_BY_NAME[name] return d and d.dur or 20 end
   local function mob(guid, name, letter, hp, created, spec, flash)
-    local m = { guid = guid, name = name, letter = letter, created = created, fakeHP = hp, dots = {}, flash = {} }
+    local m = { guid = guid, name = L[name], letter = letter, created = created, fakeHP = hp, dots = {}, flash = {} }
     for _, x in ipairs(spec) do
       local id, d = dot(x[1], x[2], x[3])
       m.dots[id] = d
@@ -2758,7 +2793,7 @@ local function buildLookPage(pg, COL)
     btn.text:SetWidth(82)
     btn.text:SetJustifyH("LEFT")
     btn.text:SetWordWrap(false)
-    btn.text:SetText((LOOK.spell(sp):gsub("^Curse of the ", "C. "):gsub("^Curse of ", "C. "):gsub("^Bane of ", "B. ")))
+    LOOK.shorten(btn.text, LOOK.spell(sp), 82)
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     btn.sp = sp
     btn:SetScript("OnClick", function(self)
@@ -2769,7 +2804,7 @@ local function buildLookPage(pg, COL)
         dirty = true
       end)
     end)
-    tip(btn, LOOK.spell(sp), "Click to pick its color.")
+    tip(btn, LOOK.spell(sp), L["Click to pick its color."], true)
     btn.refresh = function()
       local c = LOOK.color(btn.sp)
       btn.sw:SetColorTexture(c[1], c[2], c[3])
@@ -2868,7 +2903,10 @@ local function buildTimersPage(pg)
   for _, sp in ipairs(SPELLS) do
     if isMine(sp) and sp.cc and #ccNames < 3 then ccNames[#ccNames + 1] = LOOK.spell(sp) end
   end
-  makeCheck(pg, string.format(L["Crowd-control timers (%s ...)"], table.concat(ccNames, ", ")), "Shown while active, below the DoTs of that enemy.",
+  -- 0.18.1: a class without control spells in the list (Shaman) gets the plain label
+  local ccLabel = #ccNames > 0 and string.format(L["Crowd-control timers (%s ...)"], table.concat(ccNames, ", "))
+    or "Crowd-control timers"
+  makeCheck(pg, ccLabel, "Shown while active, below the DoTs of that enemy.",
     function() return db.trackCC ~= false end, function(v) db.trackCC = v wipe(spellCache) end):SetPoint("TOPLEFT", 26, y)
   y = y - 36
 
@@ -2964,6 +3002,17 @@ local function buildStatsPage(pg)
   no:SetPoint("LEFT", yes, "RIGHT", 4, 0)
   setAsking(false)
   pg:HookScript("OnHide", function() setAsking(false) end)
+end
+
+-- 0.18.1: choose the interface language (options button and /dw lang). It applies after
+-- /reload; until then everything stays in the language DotWatch was loaded with.
+function LOOK.setLanguage(tag)
+  local label = tag
+  for _, l in ipairs(KILL.ns.LANGUAGES) do if l.tag == tag then label = L[l.label] end end
+  db.lang = tag
+  if LOOK.langBtn then LOOK.langBtn:SetText(label) end
+  say(string.format(L["Language: %s. Type /reload to use it."], label))
+  if not KILL.ns.readable(tag) then say(L["If the texts can't be read after /reload: /dw lang auto"]) end
 end
 
 -- 0.18: translated checkbox labels can be longer than the column. A label with another
@@ -3127,13 +3176,11 @@ local function buildOptions()
   end
   local langBtn
   langBtn = makeButton(g, langs[langIndex()].label, 190, function()
-    local i = langIndex() % #langs + 1
-    db.lang = langs[i].tag
-    langBtn:SetText(L[langs[i].label])
-    say(string.format(L["Language: %s. Type /reload to use it."], L[langs[i].label]))
+    LOOK.setLanguage(langs[langIndex() % #langs + 1].tag)
   end)
+  LOOK.langBtn = langBtn
   langBtn:SetPoint("LEFT", langLabel, "RIGHT", 6, 0)
-  tip(langBtn, "Language", "Language of DotWatch's own texts. Spell names always come from the game. Russian and Chinese need a game client whose font has those letters. Click for the next language, then /reload.")
+  tip(langBtn, "Language", "Language of DotWatch's own texts. Spell names always come from the game. Russian and Chinese need a game client whose font has those letters. Click for the next language, then /reload. Can't read the texts? Type /dw lang auto.")
   y = y - 36
 
   makeSection(g, "Spells found", y)
@@ -3499,11 +3546,16 @@ SlashCmdList.DOTWATCH = function(msg)
     say(L["Timers cleared."])
   elseif cmd == "spells" then
     scanSpellbook("command")
-    say(string.format(L["Spellbook read via %s."], bookMethod))
+    say(string.format(L["Spellbook read via %s."], L[bookMethod]))
     for _, s in ipairs(SPELLS) do
       if known[s.name] then say("  " .. LOOK.spell(s) .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")) end
     end
     if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  " .. string.format(L["%s: not known"], LOOK.spell("Siphon Life"))) end
+    local noName = {}
+    for _, s in ipairs(SPELLS) do if isMine(s) and s.noLoc then noName[#noName + 1] = s.name .. " (" .. s.id .. ")" end end
+    if #noName > 0 then
+      say("|cffff7755" .. string.format(L["Spell ID unknown in this game, only found by its English name: %s"], table.concat(noName, ", ")) .. "|r")
+    end
   elseif cmd == "learned" then
     local any = false
     for id, dur in pairs(db.learned) do
@@ -3529,6 +3581,15 @@ SlashCmdList.DOTWATCH = function(msg)
   elseif cmd == "debug" then
     db.debugChat = not db.debugChat
     say(db.debugChat and L["Debug lines in chat on. They are always saved on /reload."] or L["Debug lines in chat off. They are always saved on /reload."])
+  elseif cmd == "lang" or cmd == "language" then
+    -- 0.18.1: also the way back when a chosen language can't be read (/dw lang auto)
+    local word = (msg or ""):match("^%S+%s+(%S+)")
+    local tag = KILL.ns.findLanguage(word)
+    if tag then
+      LOOK.setLanguage(tag)
+    else
+      say(string.format(L["Language now: %s. Choose: /dw lang auto, en, de, ru, zhCN, zhTW (then /reload)"], KILL.ns.active or KILL.ns.languageTag()))
+    end
   else
     say(L["/dw - options window"])
     say(L["/dw style <bars|slim|icons|table|focus> - display style"])
@@ -3543,6 +3604,7 @@ SlashCmdList.DOTWATCH = function(msg)
     say(L["/dw reset - reset the window position"])
     say(L["/dw clear - remove all timers"])
     say(L["/dw learned - show durations learned from real aura data"])
+    say(L["/dw lang <auto|en|de|ru|zhCN|zhTW> - interface language (then /reload)"])
   end
   dirty = true
 end

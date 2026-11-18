@@ -1,9 +1,9 @@
 -- DotWatch: deDE tooltip reading (DoT damage and duration), used when the English patterns
--- in DotWatch.lua don't read a spell's description. Copied unchanged below this header from
+-- in DotWatch.lua don't read a spell's description. Copied below this header from
 -- Smooth Animated Bars 1.11.0 (Copyright (c) 2026 Jordan, MIT License), which ported it from
 -- DoesItDie 0.9.3 (Copyright (c) 2026 Joe Greive, MIT License). Both licence notices are in
--- Locale.lua. DotWatch only uses parseDot; the names table and the combo-point helpers come
--- along unused (DotWatch finds spells by spell ID).
+-- Locale.lua. 0.18.1: DotWatch only uses parseDot, so the spell-name table and the combo-point
+-- counter were removed (DotWatch finds spells by spell ID); everything else is unchanged.
 --
 -- German (deDE) spell descriptions and names. Registers itself with Locale.lua;
 -- ported from DoesItDie 0.9.3 by Joe Greive (MIT licence, notice in Locale.lua).
@@ -52,36 +52,6 @@ local FINISHER_LINE_WORDS = {
     ["Schaden über"] = true, ["Schaden im Verlauf von"] = true, ["über"] = true, ["im Verlauf von"] = true,
 }
 
--- German names of the spells in Dots.lua's name-keyed tables: C_Spell.GetSpellName returns these on a German
--- client.
-local NAMES = {
-    ["Insect Swarm"] = { "Insektenschwarm" },
-    ["Curse of Agony"] = { "Fluch der Pein" },
-    ["Bane of Agony"] = { "Omen der Pein" }, -- Cataclysm's German name; Forever's is unverified
-    ["Fireball"] = { "Feuerball" },
-    ["Holy Fire"] = { "Heiliges Feuer" },
-    ["Rip"] = { "Zerfetzen" },
-    ["Rupture"] = { "Blutung" },
-    ["Siphon Life"] = { "Lebensentzug" },
-    ["Rain of Fire"] = { "Feuerregen" },
-    ["Hellfire"] = { "Höllenfeuer" },
-    ["Blizzard"] = { "Blizzard" },
-    ["Flamestrike"] = { "Flammenstoß" },
-    ["Consecration"] = { "Weihe" },
-    ["Hurricane"] = { "Hurrikan" },
-    ["Volley"] = { "Salve" },
-    ["Drain Life"] = { "Blutsauger" },
-    ["Drain Soul"] = { "Seelendieb" },
-    ["Drain Mana"] = { "Mana entziehen" },
-    ["Health Funnel"] = { "Lebenslinie" },
-    ["Mind Flay"] = { "Gedankenschinden" },
-    ["Arcane Missiles"] = { "Arkane Geschosse" },
-    ["Starshards"] = { "Sternensplitter" },
-    ["Immolation Trap"] = { "Feuerbrandfalle" },
-    ["Explosive Trap"] = { "Sprengfalle" },
-    ["Wyvern Sting"] = { "Stich des Flügeldrachen" },
-}
-
 local function isFinisher(desc)
     return desc:find("Finishing%-Move") ~= nil
 end
@@ -91,11 +61,6 @@ end
 -- unread and a 1-point Rip read as the 5-point one.
 local function plainSpaces(desc)
     return (desc:gsub("\194\160", " "):gsub("\226\128\175", " "))
-end
-
--- "Gewährt 1 Combopunkt." (Retail: "Gewährt für jeden Treffer 1 Combopunkt."), "Gewährt 2 Combopunkte." (Mutilate)
-local function comboPointsAwarded(desc)
-    return tonumber(plainSpaces(desc):match("Gewährt[^%.]-(%d+)%s*Combopunkt"))
 end
 
 -- German number formats to Lua's: "1.132" -> "1132", "7,1" -> "7.1".
@@ -203,6 +168,4 @@ ns.locale.register({
     tag = "deDE",
     parseDot = parseDot,
     isFinisher = isFinisher,
-    comboPointsAwarded = comboPointsAwarded,
-    names = NAMES,
 })

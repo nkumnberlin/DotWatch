@@ -1,9 +1,9 @@
 -- DotWatch: ruRU tooltip reading (DoT damage and duration), used when the English patterns
--- in DotWatch.lua don't read a spell's description. Copied unchanged below this header from
+-- in DotWatch.lua don't read a spell's description. Copied below this header from
 -- Smooth Animated Bars 1.11.0 (Copyright (c) 2026 Jordan, MIT License), which ported it from
 -- DoesItDie 0.9.3 (Copyright (c) 2026 Joe Greive, MIT License). Both licence notices are in
--- Locale.lua. DotWatch only uses parseDot; the names table and the combo-point helpers come
--- along unused (DotWatch finds spells by spell ID).
+-- Locale.lua. 0.18.1: DotWatch only uses parseDot, so the spell-name table and the combo-point
+-- counter were removed (DotWatch finds spells by spell ID); everything else is unchanged.
 --
 -- Russian (ruRU) spell descriptions and names. Registers itself with Locale.lua;
 -- ported from DoesItDie 0.9.3 by Joe Greive (MIT licence, notice in Locale.lua).
@@ -60,38 +60,6 @@ end
 -- "(24.5 * 8 * 1) ед. урона" (Blizzard) 1.
 local UNIT_WORDS = { [" "] = true, [" ед. "] = true, [" дополнительного "] = true, [" ед. дополнительного "] = true }
 
--- Russian names of the spells in Dots.lua's name-keyed tables (Forever's, from Wowhead). Names the client
--- reports by spell ID are added at load anyway (Locale.lua), so these mostly matter for the tests.
-local NAMES = {
-    ["Insect Swarm"] = { "Рой насекомых" },
-    ["Bane of Agony"] = { "Бич агонии" },
-    ["Curse of Agony"] = { "Проклятие агонии" }, -- Classic's name; unverified on Forever
-    ["Corruption"] = { "Порча" },
-    ["Fireball"] = { "Огненный шар" },
-    ["Holy Fire"] = { "Священный огонь" },
-    ["Rip"] = { "Разорвать" },
-    ["Rupture"] = { "Рваная рана" },
-    ["Siphon Life"] = { "Вытягивание жизни" },
-    ["Serpent Sting"] = { "Укус змеи" },
-    ["Pyroblast"] = { "Огненная глыба" },
-    ["Rain of Fire"] = { "Огненный ливень" },
-    ["Hellfire"] = { "Адское Пламя", "Адское пламя" },
-    ["Blizzard"] = { "Снежная буря" },
-    ["Flamestrike"] = { "Огненный столб" },
-    ["Consecration"] = { "Освящение" },
-    ["Hurricane"] = { "Гроза" },
-    ["Volley"] = { "Град стрел" },
-    ["Drain Life"] = { "Похищение жизни" },
-    ["Drain Soul"] = { "Похищение души" },
-    ["Drain Mana"] = { "Похищение маны" },
-    ["Health Funnel"] = { "Канал здоровья" },
-    ["Mind Flay"] = { "Пытка разума" },
-    ["Arcane Missiles"] = { "Чародейские снаряды" },
-    ["Starshards"] = { "Звездные осколки", "Звёздные осколки" },
-    ["Immolation Trap"] = { "Обжигающая ловушка" },
-    ["Explosive Trap"] = { "Взрывная ловушка" },
-}
-
 -- Non-breaking spaces (U+00A0, U+202F) as plain ones, so "40 ед." reads the same either way; then decimal commas
 -- ("1,5 сек." -> "1.5 сек.") and thousands separators ("1 132").
 local function normalize(desc)
@@ -103,17 +71,6 @@ end
 -- "Завершающий прием" (Rip, Rupture, Kidney Shot) or "Завершающий удар" (Eviscerate).
 local function isFinisher(desc)
     return desc:find("Завершающий при", 1, true) ~= nil or desc:find("Завершающий удар", 1, true) ~= nil
-end
-
--- "Длина серии приемов увеличивается на 1." (Rake, Sinister Strike, Garrote; Cheap Shot 2). Claw's Russian text
--- has its numbers swapped ("нанося 39% базового и 1 ед. дополнительного урона. Длина серии приемов увеличивается
--- на 140."), and no builder awards more than 5, so a higher number counts as the one point every other builder gives.
--- Mutilate words it "Продлевает серию приемов на 2." ("приёмов" accepted too).
-local function comboPointsAwarded(desc)
-    local points = tonumber(desc:match("Длина серии [^0-9]-увеличивается на ([0-9]+)")
-        or desc:match("Продлевает серию при[^ ]-мов на ([0-9]+)"))
-    if points and points > 5 then return 1 end
-    return points
 end
 
 -- "5 приемов: 189 ед. урона за 12 сек." per combo point count (Rip, Rupture).
@@ -179,6 +136,4 @@ ns.locale.register({
     tag = "ruRU",
     parseDot = parseDot,
     isFinisher = function(desc) return isFinisher(normalize(desc)) end,
-    comboPointsAwarded = comboPointsAwarded,
-    names = NAMES,
 })

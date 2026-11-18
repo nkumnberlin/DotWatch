@@ -2,7 +2,7 @@
 
 DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for every class that has DoTs.
 
-Current release: **v0.14.2** (on CurseForge as [Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), and as a tag here). On `main`, not released yet: 0.14.3 (Priest Mind Soothe). Work in progress: Warlock is tested in game the most; Priest has been tested too, the other classes are new in 0.13/0.14. Feedback and wishes are welcome in the issues.
+Current release: **v0.14.2** (on CurseForge as [Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), and as a tag here). On `main`, not released yet: 0.14.3 (Priest Mind Soothe), 0.15 (kill skull), 0.16–0.18.1 (German, Russian and Chinese clients and interface). Work in progress: Warlock is tested in game the most; Priest has been tested too, the other classes are new in 0.13/0.14. Feedback and wishes are welcome in the issues.
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
 
@@ -37,6 +37,8 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop (not while the enemy is banished).
 - **Look options**: font size, bar texture, a color per DoT (for your class), window size, growth direction, fading out of combat.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
+- **Kill skull** next to each enemy's health: bright when the damage your running DoTs still deal will finish it, dim when not.
+- **Languages**: works on English, German, Russian and Chinese (simplified and traditional) clients: spells are found by spell ID and tooltips are read in those languages. The interface is in English, German, Russian and Chinese too: it follows the client language, or choose one under General › Language (or `/dw lang`), then `/reload`. Russian and Chinese texts are machine-assisted and not yet checked by native speakers; corrections are welcome.
 - **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch.
 
 ## Install
@@ -59,6 +61,7 @@ Then start the game or type `/reload`.
 | `/dw test` | Show sample timers, e.g. to position the window |
 | `/dw spells` | Show the spells found in your spellbook |
 | `/dw reset` | Move the window back to its default spot |
+| `/dw lang <auto\|en\|de\|ru\|zhCN\|zhTW>` | Interface language, applied after `/reload`. `/dw lang auto` goes back to the game's language (e.g. if a chosen one can't be read) |
 | `/dw help` | List all commands |
 
 ## How it works
@@ -78,6 +81,8 @@ Then start the game or type `/reload`.
 - In dungeons, an enemy whose nameplate disappears can't be recognized again; it gets a new row next time. No statistics there.
 - Freezing Trap starts on the first new debuff an enemy gets after the trap was placed; another player's debuff at that moment can set it off in DotWatch.
 - Classes other than Warlock are not much tested in game yet.
+- On German clients the tooltip wording (kill skull damage, DoT durations) is from Classic Era and not yet checked on Forever. Crowd-control durations on non-English clients come from DotWatch's duration table.
+- Russian and Chinese interface texts need a game client whose font has those letters.
 
 ## DotProbe
 
