@@ -249,7 +249,7 @@ ns.STRINGS.ruRU = {
   ["Mini bar height"] = "Высота мини-полос",
   -- 0.19.2
   ["Mini bars up / down"] = "Мини-полосы вверх / вниз",
-  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "Минус сдвигает полосы вниз, например под полосу заклинания врага. Плюс — вверх.",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up, past 30 above the plate."] = "Минус сдвигает полосы вниз, например под полосу заклинания врага. Плюс — вверх, примерно от 30 над индикатором.",
   -- 0.19.3
   ["Icons on the mini bars"] = "Значки у мини-полос",
   ["Off"] = "Нет",

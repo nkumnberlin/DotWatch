@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.19.4"
+local VERSION = "0.19.5"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -3269,11 +3269,11 @@ function LOOK.buildEnemiesPage(g)
   sl:SetWidth(180)
   y = y - 44
   -- 0.19.2: move the bars down (e.g. below the mob's cast bar) or up
-  sl = makeSlider(g, "Mini bars up / down", -40, 30, 1, "%d px",
+  sl = makeSlider(g, "Mini bars up / down", -40, 80, 1, "%d px", -- 0.19.5: up to 80, above the plate
     function() return db.plateBarY or 0 end, function(v) db.plateBarY = v end)
   sl:SetPoint("TOPLEFT", 30, y)
   sl:SetWidth(180)
-  tip(sl, "Mini bars up / down", "Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up.")
+  tip(sl, "Mini bars up / down", "Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up, past 30 above the plate.")
 
   -- preview: two made-up nameplates that follow the options above
   makeSection(g, "Preview", top, COL + 16)
@@ -3313,6 +3313,7 @@ function LOOK.buildEnemiesPage(g)
     box:SetBackdropColor(0.08, 0.06, 0.04, 0.9)
     box:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
   end
+  pcall(box.SetClipsChildren, box, true) -- with the bars high up the second plate may not fit
   local plates = {}
   local function fake(i, caption)
     local p = { y = -32 - (i - 1) * 88 }
@@ -3349,6 +3350,10 @@ function LOOK.buildEnemiesPage(g)
     local mobs2 = { sample[2], sample[3] } -- Slave Worker B: all up; Dark Iron Taskmaster: missing
     for i, p in ipairs(plates) do
       local m, o, hb = mobs2[i], p.o, p.hb
+      -- 0.19.5: bars moved above the plate: push the sample plates down to make room
+      local up = math.max(0, db.plateBarY or 0)
+      hb:ClearAllPoints()
+      hb:SetPoint("TOPLEFT", box, "TOPLEFT", 36, -32 - up - (i - 1) * (up > 0 and 72 + up or 88))
       hb.name:SetText(m.name)
       hb:SetValue(m.fakeHP or 50)
       local rows, missing = LOOK.slotRows(m, t0)

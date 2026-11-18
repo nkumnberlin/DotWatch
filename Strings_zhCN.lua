@@ -249,7 +249,7 @@ ns.STRINGS.zhCN = {
   ["Mini bar height"] = "迷你条高度",
   -- 0.19.2
   ["Mini bars up / down"] = "迷你条上下位置",
-  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "负数向下移动，例如移到敌人施法条下方。正数向上移动。",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up, past 30 above the plate."] = "负数向下移动，例如移到敌人施法条下方。正数向上移动，约30以上会到姓名板上方。",
   -- 0.19.3
   ["Icons on the mini bars"] = "迷你条图标",
   ["Off"] = "关",

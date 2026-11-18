@@ -248,7 +248,7 @@ ns.STRINGS.deDE = {
   ["Mini bar height"] = "Höhe der Mini-Balken",
   -- 0.19.2
   ["Mini bars up / down"] = "Mini-Balken hoch / runter",
-  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up."] = "Minus schiebt die Balken nach unten, z. B. unter die Zauberleiste des Gegners. Plus schiebt sie nach oben.",
+  ["Minus moves the bars down, e.g. below the enemy's cast bar. Plus moves them up, past 30 above the plate."] = "Minus schiebt die Balken nach unten, z. B. unter die Zauberleiste des Gegners. Plus schiebt sie nach oben, ab etwa 30 über die Plakette.",
   -- 0.19.3
   ["Icons on the mini bars"] = "Symbole an den Mini-Balken",
   ["Off"] = "Aus",
