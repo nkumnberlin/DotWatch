@@ -5,6 +5,8 @@ package-as: DotWatch
 ignore:
   - DotProbe
   - README.md
+  - AGENTS.md
+  - CLAUDE.md
   - .gitignore
   - .pkgmeta
   - .github
