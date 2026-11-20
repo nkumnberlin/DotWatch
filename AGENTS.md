@@ -137,7 +137,7 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 ## 6. Git, install and release workflow
 
 1. Day-to-day: bump `## Version:` in `DotWatch.toc` → install into Nico's Forever AddOns folder (path in the local knowledge base) → commit + push to `main`. No release. Nico wants addons installed for him, not files to copy by hand.
-2. Experimental work for testers goes on its own branch (e.g. `priest-0.20`) until Nico OKs the merge.
+2. **Experimental features** (anything built on a guess, e.g. Devouring Plague jumps) ship in a normal release **switched off** (`db.<flag> == true` only after the player ticks it) and labeled "(experimental)" in the options and README. Testers turn them on and get updates through CurseForge, no zips. Bigger test versions may still go on their own branch (e.g. `priest-0.20`) until Nico OKs the merge.
 3. Nico tests in game and says OK ("release it").
 4. `git push origin main:release` → `tag-release.yml` reads the TOC version and creates tag `v<version>` (once per version; also `workflow_dispatch`).
 5. CurseForge (Automatic Packaging = tagged commits) builds the zip from the tag. `-beta`/`-alpha` in the tag → beta/alpha file. `.pkgmeta` packages one `DotWatch` folder without DotProbe and the repo docs.

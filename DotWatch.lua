@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.20.2"
+local VERSION = "0.20.3"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -857,8 +857,10 @@ function TRACK.scanTalent()
   TRACK.talent = state
 end
 
+-- 0.20.3: experimental, off by default (db.contagion == true only after ticking it), so the
+-- guess can ship in a release while only testers use it
 function TRACK.contagionOn()
-  return myClass() == "PRIEST" and db.contagion ~= false and TRACK.talent ~= "no"
+  return myClass() == "PRIEST" and db.contagion == true and TRACK.talent ~= "no"
 end
 
 -- one enemy for a jump (a = its last aura change)
@@ -3467,10 +3469,10 @@ function LOOK.buildSpellsPage(g)
   local isPriest = classFile == "PRIEST"
   local sec, jump, state
   if isPriest then
-    sec = makeSection(g, "Devouring Plague jumps", -300)
+    sec = makeSection(g, "Devouring Plague jumps (experimental)", -300)
     jump = makeCheck(g, "Follow Devouring Plague jumps",
       "Devouring Contagion talent: when an enemy dies with your Devouring Plague on it, the plague jumps to 2 nearby enemies. DotWatch guesses which ones (they get a new debuff at that moment) and drops a guess when no shadow damage follows. A guess can be wrong in a group.",
-      function() return db.contagion ~= false end, function(v) db.contagion = v end)
+      function() return db.contagion == true end, function(v) db.contagion = v end)
     state = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   end
 
@@ -4322,7 +4324,7 @@ SlashCmdList.DOTWATCH = function(msg)
       if known[s.name] then say("  " .. LOOK.spell(s) .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")
         .. (TRACK.on(s) and "" or ("  |cff888888" .. L["(not tracked)"] .. "|r"))) end
     end
-    if myClass() == "PRIEST" then say("  Devouring Contagion: " .. TRACK.talent .. (db.contagion == false and " (off)" or "")) end
+    if myClass() == "PRIEST" then say("  Devouring Contagion: " .. TRACK.talent .. (db.contagion == true and "" or " (off, experimental)")) end
     if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  " .. string.format(L["%s: not known"], LOOK.spell("Siphon Life"))) end
     local noName = {}
     for _, s in ipairs(SPELLS) do if isMine(s) and s.noLoc then noName[#noName + 1] = s.name .. " (" .. s.id .. ")" end end
