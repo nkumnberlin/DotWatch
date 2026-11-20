@@ -276,4 +276,11 @@ ns.STRINGS.deDE = {
   ["Talent: not readable here, jumps are followed anyway"] = "Talent: hier nicht lesbar, Sprünge werden trotzdem verfolgt",
   ["jumped"] = "übergesprungen",
   ["(not tracked)"] = "(nicht verfolgt)",
+  ["Enemy nameplates are off. In dungeons DotWatch tells enemies apart by their nameplates: press V, or tick \"Always show enemy plates\" in /dw > General."] = "Gegner-Namensplaketten sind aus. In Dungeons unterscheidet DotWatch Gegner an ihren Namensplaketten: drück V oder hake \"Gegnerplaketten immer an\" unter /dw > Allgemein an.",
+  ["The nameplate setting changes after the fight."] = "Die Namensplaketten-Einstellung wird nach dem Kampf geändert.",
+  ["Game nameplates"] = "Namensplaketten (Spiel)",
+  ["Always show enemy plates"] = "Gegnerplaketten immer an",
+  ["Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting."] = "Schaltet die Gegner-Namensplaketten des Spiels ein (wie Taste V), beim Einloggen und in jedem Dungeon. In Dungeons unterscheidet DotWatch Gegner an ihren Namensplaketten. Nicht im Kampf: dann nach dem Kampf. Abhaken stellt deine alte Einstellung wieder her.",
+  ["Max plate range"] = "Max. Plakettenreichweite",
+  ["Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting."] = "Zeigt Namensplaketten so weit, wie das Spiel erlaubt (60 Meter), damit du auch Gegner siehst, die du aus der Ferne dottest. Nicht im Kampf: dann nach dem Kampf. Abhaken stellt deine alte Einstellung wieder her.",
 }

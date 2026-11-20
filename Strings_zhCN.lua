@@ -277,4 +277,11 @@ ns.STRINGS.zhCN = {
   ["Talent: not readable here, jumps are followed anyway"] = "天赋：此处无法读取，仍会追踪跳跃",
   ["jumped"] = "已跳跃",
   ["(not tracked)"] = "（未追踪）",
+  ["Enemy nameplates are off. In dungeons DotWatch tells enemies apart by their nameplates: press V, or tick \"Always show enemy plates\" in /dw > General."] = "敌方姓名板已关闭。在地下城中，DotWatch 依靠姓名板区分敌人：按 V，或在 /dw > 常规 中勾选“总是显示敌方姓名板”。",
+  ["The nameplate setting changes after the fight."] = "姓名板设置将在战斗结束后更改。",
+  ["Game nameplates"] = "游戏姓名板",
+  ["Always show enemy plates"] = "总是显示敌方姓名板",
+  ["Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting."] = "在登录时和每个地下城中打开游戏的敌方姓名板（相当于按 V）。在地下城中，DotWatch 依靠姓名板区分敌人。战斗中无法更改：将在战斗结束后更改。取消勾选会恢复你原来的设置。",
+  ["Max plate range"] = "最大姓名板距离",
+  ["Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting."] = "在游戏允许的最远距离（60码）显示姓名板，让你远距离上 DoT 时仍能看到敌人。战斗中无法更改：将在战斗结束后更改。取消勾选会恢复你原来的设置。",
 }

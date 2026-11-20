@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.20.3"
+local VERSION = "0.20.4"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -583,11 +583,98 @@ end
 -- names and GUIDs from addons, but UnitIsUnit and the nameplate tokens stay
 -- readable (DotProbe npmap test, 2026-11-17). So there an enemy is known by
 -- its nameplate: one key per nameplate, from NAME_PLATE_UNIT_ADDED until
--- REMOVED. A target without a nameplate gets a key until the target changes.
+-- REMOVED.
+-- 0.20.4: nameplates alone were not enough. With enemy nameplates switched off
+-- (the client default), out of plate range or behind a wall, an enemy got a new
+-- key on every target switch, so its timers were lost or doubled. Now a key also
+-- sticks to "anchor" tokens: your target and focus, your pet's and your party's
+-- targets, the boss frames. UnitIsUnit compares them although names and GUIDs
+-- are secret, so an enemy keeps its key while any token still points at it, and
+-- a plate that comes back takes the key over again.
 ---------------------------------------------------------------------------
 local plateKey = {}   -- "nameplateN" -> key
 local keySerial = 0
-local targetKey       -- key of a target that has no nameplate
+TRACK.ANCHORS = { "target", "focus", "pettarget", "party1target", "party2target", "party3target",
+  "party4target", "boss1", "boss2", "boss3", "boss4", "boss5" }
+TRACK.isAnchor = {}
+for _, a in ipairs(TRACK.ANCHORS) do TRACK.isAnchor[a] = true end
+TRACK.anchorKey = {} -- anchor token -> key (cleared when that token changes its unit)
+TRACK.CAST_UNITS = { "target", "mouseover", "focus", "targettarget" } -- where a cast can have gone
+TRACK.noEvents = { pettarget = true, party1target = true, party2target = true, party3target = true,
+  party4target = true } -- tokens without UNIT_COMBAT/UNIT_AURA events
+-- the key some other anchor already gave this unit
+function TRACK.findAnchor(unit)
+  for _, a in ipairs(TRACK.ANCHORS) do
+    local k = TRACK.anchorKey[a]
+    if k and a ~= unit and plain(UnitIsUnit, unit, a) == true then return k end
+  end
+end
+-- does any anchor still point at this key's enemy?
+function TRACK.held(k)
+  for a, ak in pairs(TRACK.anchorKey) do
+    if ak == k and plain(UnitExists, a) == true then return true end
+  end
+end
+-- 0.20.4: once per session, in an instance with enemy nameplates switched off: say why they matter
+function TRACK.plateHint()
+  TRACK.applyCVars()
+  if TRACK.hinted or not IsInInstance then return end
+  local ok, inside, kind = pcall(IsInInstance)
+  if not ok or issecret(inside) or issecret(kind) or not inside or (kind ~= "party" and kind ~= "raid") then return end
+  local get = (C_CVar and C_CVar.GetCVar) or GetCVar
+  if str(plain(get, "nameplateShowEnemies")) == "0" then
+    TRACK.hinted = true
+    say(L["Enemy nameplates are off. In dungeons DotWatch tells enemies apart by their nameplates: press V, or tick \"Always show enemy plates\" in /dw > General."])
+    dbg("HINT enemy nameplates are off")
+  end
+end
+-- 0.20.4: optional game settings for nameplates (Nico's idea). Off by default: DotWatch only
+-- changes them when the player ticks them. CVars can't be set in combat: then after the fight.
+-- Unticking gives back the old value (if the player didn't change it since).
+TRACK.CVARS = {
+  { opt = "plateAlways", cvar = "nameplateShowEnemies", value = "1" },
+  { opt = "plateRange", cvar = "nameplateMaxDistance", value = "60" }, -- Forever: 60 accepted (Nico's client)
+}
+function TRACK.getCVar(name)
+  return str(plain((C_CVar and C_CVar.GetCVar) or GetCVar, name))
+end
+function TRACK.sameCVar(a, b)
+  return a == b or (tonumber(a) ~= nil and tonumber(a) == tonumber(b))
+end
+function TRACK.applyCVars(fromClick)
+  if InCombatLockdown() then
+    if fromClick and not TRACK.cvarLater then say(L["The nameplate setting changes after the fight."]) end
+    TRACK.cvarLater = true
+    return
+  end
+  TRACK.cvarLater = nil
+  local set = (C_CVar and C_CVar.SetCVar) or SetCVar
+  if type(set) ~= "function" then return end
+  db.cvarPrev = db.cvarPrev or {}
+  for _, c in ipairs(TRACK.CVARS) do
+    local cur = TRACK.getCVar(c.cvar)
+    local prev = db.cvarPrev[c.cvar]
+    if db[c.opt] == true then
+      if cur and not TRACK.sameCVar(cur, c.value) then
+        if prev == nil then db.cvarPrev[c.cvar] = cur end
+        local ok = pcall(set, c.cvar, c.value)
+        dbg("CVAR " .. c.cvar .. " " .. cur .. " -> " .. tostring(TRACK.getCVar(c.cvar)) .. (ok and "" or " (failed)"))
+      end
+    elseif prev ~= nil then
+      if cur and TRACK.sameCVar(cur, c.value) then
+        local ok = pcall(set, c.cvar, prev)
+        dbg("CVAR " .. c.cvar .. " back to " .. prev .. (ok and "" or " (failed)"))
+      end
+      db.cvarPrev[c.cvar] = nil
+    end
+  end
+end
+-- a plate going away: anchors that still show this enemy keep its key
+function TRACK.handOver(tok, k)
+  for _, a in ipairs(TRACK.ANCHORS) do
+    if plain(UnitIsUnit, a, tok) == true then TRACK.anchorKey[a] = k end
+  end
+end
 local function newKey(prefix)
   keySerial = keySerial + 1
   return prefix .. keySerial
@@ -612,15 +699,20 @@ local function keyOf(unit)
   if g then return g end
   if plain(UnitExists, unit) ~= true then return nil end
   local tok = plateOf(unit)
-  if tok then
-    local k = plateKey[tok]
-    if not k then k = newKey("Plate-") plateKey[tok] = k end
-    return k, tok
+  local anchor = TRACK.isAnchor[unit]
+  -- the plate's key wins; no merging (a target switch whose event hasn't arrived yet
+  -- could otherwise join two different enemies)
+  local k = (tok and plateKey[tok]) or (anchor and TRACK.anchorKey[unit]) or TRACK.findAnchor(unit)
+  if not k then
+    if tok then k = newKey("Plate-")
+    elseif anchor then k = newKey("Target-")
+    else return nil end -- e.g. a mouseover without plate that no anchor knows
   end
-  if unit == "target" then
-    targetKey = targetKey or newKey("Target-")
-    return targetKey
-  end
+  if tok then plateKey[tok] = k end
+  if anchor then TRACK.anchorKey[unit] = k end
+  local m = mobs[k]
+  if m and m.offPlate then m.offPlate = nil end -- seen again
+  return k, tok
 end
 
 ---------------------------------------------------------------------------
@@ -628,23 +720,29 @@ end
 ---------------------------------------------------------------------------
 local function resolveDest(destName)
   if issecret(destName) then
-    -- dungeon: the target's name is hidden; the cast went to the target (or a macro target we can't see)
-    local k = keyOf("target")
-    if k and plain(UnitIsDead, "target") ~= true then return k, "target (hidden name)" end
-    return nil, "hidden target name and no target"
+    -- dungeon: the name is hidden. The cast went to your target, unless that is a friend or
+    -- missing: then (0.20.4) to a mouseover/focus macro target or your target's target.
+    for _, u in ipairs(TRACK.CAST_UNITS) do
+      if plain(UnitCanAttack, "player", u) ~= false and plain(UnitIsDead, u) ~= true then
+        local k = keyOf(u)
+        if k then return k, u .. " (hidden name)" end
+      end
+    end
+    return nil, "hidden target name and no enemy target"
   end
   destName = str(destName)
   if not destName or destName == "" then return nil, "no readable target name" end
-  for _, u in ipairs({ "target", "mouseover", "focus" }) do
+  -- 0.20.4: keyOf instead of the GUID, so a readable name with a hidden GUID still works
+  for _, u in ipairs(TRACK.CAST_UNITS) do
     if nameOf(u) == destName then
-      local g = guidOf(u)
+      local g = keyOf(u)
       if g then return g, u end
     end
   end
   for i = 1, 40 do
     local u = "nameplate" .. i
     if nameOf(u) == destName then
-      local g = guidOf(u)
+      local g = keyOf(u)
       if g then return g, u end
     end
   end
@@ -1068,6 +1166,11 @@ end
 ---------------------------------------------------------------------------
 local TOKENS = { "target", "focus", "mouseover" }
 for i = 1, 40 do TOKENS[#TOKENS + 1] = "nameplate" .. i end
+-- 0.20.4: the other anchors too (pet, party targets, bosses): they keep a hidden enemy's key,
+-- its HP and its death visible without a nameplate
+for _, a in ipairs(TRACK.ANCHORS) do
+  if a ~= "target" and a ~= "focus" then TOKENS[#TOKENS + 1] = a end
+end
 
 -- Out of combat the real debuffs are readable: keep each timer in line with them.
 -- (Replaces the old "clear everything when combat ends", which wiped DoTs when the
@@ -1112,12 +1215,14 @@ end
 local function scan()
   TRACK.prune(now())
   if next(mobs) == nil then return end
-  for _, m in pairs(mobs) do m.unit = nil end
+  for _, m in pairs(mobs) do m.unit, m.tickUnit = nil, nil end
   for _, u in ipairs(TOKENS) do
     local g = keyOf(u)
     local m = g and mobs[g]
     if m then
       if not m.unit then m.unit = u end -- token used for the HP display (target first)
+      -- 0.20.4: party and pet targets get no unit events (no ticks): they don't count for "lost?"
+      if not TRACK.noEvents[u] then m.tickUnit = u end
       if m.hidden then -- a hidden (secret) name can still be drawn
         if not m.shownName then dirty = true end
         m.shownName = UnitName(u)
@@ -1137,7 +1242,7 @@ local function scan()
   local t = now()
   for g, m in pairs(mobs) do
     -- "DoT lost?": its school's ticks stopped although the enemy is in view
-    if m.unit then m.tokenSince = m.tokenSince or t else m.tokenSince = nil end
+    if m.tickUnit then m.tokenSince = m.tokenSince or t else m.tokenSince = nil end
     -- 0.14.1: a banished enemy takes no ticks. No "lost?" while Banish runs, and the
     -- clock starts again when it ends.
     local shielded = ccActive(m, "invuln")
@@ -2823,7 +2928,8 @@ local ev = CreateFrame("Frame")
 local function reg(e) pcall(ev.RegisterEvent, ev, e) end
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_TARGET_CHANGED",
   "UNIT_COMBAT", "UNIT_AURA", "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB", "CHARACTER_POINTS_CHANGED",
-  "PLAYER_TALENT_UPDATE", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED" }) do
+  "PLAYER_TALENT_UPDATE", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
+  "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "UNIT_PET", "GROUP_ROSTER_UPDATE", "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_ENTERING_WORLD" }) do
   reg(e)
 end
 for _, e in ipairs({ "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED",
@@ -2898,8 +3004,26 @@ ev:SetScript("OnEvent", function(_, event, ...)
   elseif event == "UNIT_AURA" then
     onUnitAura(...)
   elseif event == "PLAYER_TARGET_CHANGED" then
-    targetKey = nil
+    TRACK.anchorKey.target = nil
     dirty = true
+  elseif event == "PLAYER_FOCUS_CHANGED" then
+    TRACK.anchorKey.focus = nil
+    dirty = true
+  elseif event == "UNIT_TARGET" then
+    -- 0.20.4: a party member or your pet picked another target
+    local u = ...
+    if type(u) == "string" and not issecret(u) and (u == "pet" or u:match("^party%d$")) then
+      TRACK.anchorKey[u .. "target"] = nil
+    end
+  elseif event == "UNIT_PET" then
+    TRACK.anchorKey.pettarget = nil
+  elseif event == "GROUP_ROSTER_UPDATE" then
+    for i = 1, 4 do TRACK.anchorKey["party" .. i .. "target"] = nil end
+  elseif event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
+    for i = 1, 5 do TRACK.anchorKey["boss" .. i] = nil end
+    dirty = true
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    C_Timer.After(3, TRACK.plateHint)
   elseif event == "NAME_PLATE_UNIT_ADDED" then
     local u = ...
     if type(u) == "string" and not issecret(u) then plateKey[u] = nil end -- a new enemy on this token
@@ -2908,6 +3032,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
     local u = ...
     if type(u) == "string" and not issecret(u) then
       local k = plateKey[u]
+      if k then TRACK.handOver(u, k) end -- 0.20.4: your target, focus ... still know it
       plateKey[u] = nil
       -- 0.20: an enemy with a readable GUID that dies away from your target was only noticed
       -- when its timers ran out. Its plate goes at the moment of death (Devouring Contagion
@@ -2918,7 +3043,9 @@ ev:SetScript("OnEvent", function(_, event, ...)
         if plain(UnitIsDead, u) == true then
           removeMob(k, "dead (nameplate gone)")
         else
-          mobs[k].offPlate = true -- out of sight: keep its timers, it can't be recognized again
+          -- out of sight: keep its timers. 0.20.4: an anchor (target, focus, party target ...) may
+          -- still know it; then it stays a normal enemy and a returning plate takes its key over
+          if not TRACK.held(k) then mobs[k].offPlate = true end
         end
       end
     end
@@ -2932,6 +3059,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
     -- don't wipe: the out-of-combat sync checks the real debuffs instead
     if next(mobs) then dbg("COMBAT END: timers kept, checking real debuffs") end
     wipe(pending)
+    if TRACK.cvarLater then TRACK.applyCVars() end -- 0.20.4: a nameplate setting ticked in combat
     if bookAfterCombat then
       local why = bookAfterCombat
       bookAfterCombat = nil
@@ -3936,6 +4064,15 @@ local function buildOptions()
   LOOK.langBtn = langBtn
   langBtn:SetPoint("LEFT", langLabel, "RIGHT", 6, 0)
   tip(langBtn, "Language", "Language of DotWatch's own texts. Spell names always come from the game. Russian and Chinese need a game client whose font has those letters. Click for the next language, then /reload. Can't read the texts? Type /dw lang auto.")
+  y = y - 36
+
+  -- 0.20.4: game settings for nameplates (dungeons need them to tell enemies apart)
+  makeSection(g, "Game nameplates", y)
+  y = y - 22
+  makeCheck(g, "Always show enemy plates", "Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting.",
+    function() return db.plateAlways == true end, function(v) db.plateAlways = v TRACK.applyCVars(true) end):SetPoint("TOPLEFT", 26, y)
+  makeCheck(g, "Max plate range", "Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting.",
+    function() return db.plateRange == true end, function(v) db.plateRange = v TRACK.applyCVars(true) end):SetPoint("TOPLEFT", 280, y)
   y = y - 36
 
   makeSection(g, "Spells found", y)

@@ -76,6 +76,9 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 
 **Instances (hidden names/GUIDs)**
 - `keyOf(unit)` = GUID if readable, else `Plate-N` (from NAME_PLATE_UNIT_ADDED until REMOVED), else `Target-N` for a plate-less target.
+- 0.20.4: keys also stick to **anchor tokens** (`target`, `focus`, `pettarget`, `party1-4target`, `boss1-5`). `UnitIsUnit` compares them with plates although names/GUIDs are secret, so an enemy keeps its key across target switches, plate flicker and out-of-plate-range casts while any anchor still points at it; a returning plate inherits the key. Clear an anchor on its change event (PLAYER_TARGET_CHANGED, PLAYER_FOCUS_CHANGED, UNIT_TARGET, UNIT_PET, GROUP_ROSTER_UPDATE, INSTANCE_ENCOUNTER_ENGAGE_UNIT). Never merge two keys on a mismatch (a late change event would join two enemies). Party/pet targets get no unit events, so they don't count for "lost?".
+- Hidden SENT name: the cast went to the first hostile, living unit of target → mouseover → focus → targettarget (a healer with a friendly target casts via macro).
+- Enemy nameplates off (client default, V key) = dungeon tracking only via anchors; DotWatch says so once per session in an instance. Options › General › "Game nameplates" sets `nameplateShowEnemies` = 1 and `nameplateMaxDistance` = 60 (off by default, out of combat only, queued until PLAYER_REGEN_ENABLED, old value restored on untick if unchanged since; `CVAR` debug lines).
 - Draw the secret name with `fs:SetText(UnitName(unit))`; anchor the next element to the name's right edge (never read its width).
 
 **Comparing secret values without reading them** (kill skull; idea from DoesItDie / Smooth Animated Bars, MIT)

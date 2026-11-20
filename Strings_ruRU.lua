@@ -277,4 +277,11 @@ ns.STRINGS.ruRU = {
   ["Talent: not readable here, jumps are followed anyway"] = "Талант: здесь не читается, перескоки всё равно отслеживаются",
   ["jumped"] = "перескочила",
   ["(not tracked)"] = "(не отслеживается)",
+  ["Enemy nameplates are off. In dungeons DotWatch tells enemies apart by their nameplates: press V, or tick \"Always show enemy plates\" in /dw > General."] = "Индикаторы здоровья противников выключены. В подземельях DotWatch различает противников по их индикаторам: нажмите V или включите \"Индикаторы врагов всегда\" в /dw > Общие.",
+  ["The nameplate setting changes after the fight."] = "Настройка индикаторов изменится после боя.",
+  ["Game nameplates"] = "Индикаторы (игра)",
+  ["Always show enemy plates"] = "Индикаторы врагов всегда",
+  ["Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting."] = "Включает игровые индикаторы здоровья противников (как клавиша V) при входе и в каждом подземелье. В подземельях DotWatch различает противников по их индикаторам. Не в бою: тогда после боя. Если снять галочку, вернётся ваша прежняя настройка.",
+  ["Max plate range"] = "Макс. дальность индикаторов",
+  ["Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting."] = "Показывает индикаторы так далеко, как позволяет игра (60 м), чтобы видеть противников, на которых вы вешаете DoT издалека. Не в бою: тогда после боя. Если снять галочку, вернётся ваша прежняя настройка.",
 }

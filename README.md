@@ -33,7 +33,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Tracked spells page**: a checkbox for every spell DotWatch knows for your class, also for spells you haven't learned yet (gray name, faded icon), so you can choose ahead of time. Untracked spells get no timer, no placeholder, no red blink and no nameplate status. "Default list" puts everything back. Holy Fire is off by default (Shadow priests don't cast it).
 - **Traps**: the timer starts on the enemy that sets the trap off, not when you place it.
 - **Enemies stay until they die**: a living enemy keeps its row and health, even with no DoTs on it, and its name blinks softly red while one of your DoTs is missing. In the open world a row goes away as soon as the enemy's nameplate disappears dead. No blink while you keep it out of the fight on purpose (Banish, Polymorph, Sap, Mind Soothe, Shackle, …). Fear still blinks.
-- **Dungeons**: Forever hides enemy names and IDs there, so DotWatch tells enemies apart by their nameplates. Keep enemy nameplates on.
+- **Dungeons**: Forever hides enemy names and IDs there, so DotWatch tells enemies apart by their nameplates, and (0.20.4) by your target, focus, your pet's and your party's targets and the boss frames. Keep enemy nameplates on: DotWatch says so once in a dungeon when they are off. Options › General › "Game nameplates" can switch them on for you ("Always show enemy plates") and show them as far away as the game allows ("Max plate range", 60 yards); both are off by default, change only out of combat and give back your old setting when unticked.
 - **Resist and immune detection**: a resisted DoT starts no timer and shows a red "Resisted" or "Immune" line. A resisted refresh keeps the old timer running.
 - **Same-named enemies**: three "Slave Workers" become A, B and C, in the list and as a letter on their nameplates (left of the health bar, or above the plate).
 - **Enemy health** next to each name as percent, as a bar, or both, from green to yellow to red.
@@ -105,7 +105,7 @@ Then start the game or type `/reload`.
 ## How it works
 
 - **Start**: `UNIT_SPELLCAST_SENT` gives the enemy's name. DotWatch matches it to your target, mouseover, focus or a nameplate. `UNIT_SPELLCAST_SUCCEEDED` starts the timer, with the duration taken from the spell's tooltip.
-- **Dungeons**: names and GUIDs are secret there, but `UnitIsUnit` and nameplate tokens stay readable, so an enemy is known by its nameplate from the moment it appears until it disappears. The game draws the hidden name for us.
+- **Dungeons**: names and GUIDs are secret there, but `UnitIsUnit` and nameplate tokens stay readable, so an enemy is known by its nameplate from the moment it appears until it disappears. Since 0.20.4 a key also sticks to "anchor" tokens (target, focus, pet and party targets, boss frames), so an enemy keeps its timers across target switches, plates that flicker away and casts from outside nameplate range. A cast with a hidden name goes to the first hostile unit of target, mouseover, focus, target of target. The game draws the hidden name for us.
 - **Resists**: when a DoT fails, the game sends `UNIT_COMBAT` with MISS, RESIST or IMMUNE on that enemy in the same frame as the successful cast. If no aura change arrives in that frame, the timer is cancelled.
 - **Out of combat** the real debuffs are readable, so DotWatch corrects its timers and learns the exact DoT durations (not crowd control: diminishing returns would shorten them).
 - **Health and kill skull**: Forever keeps enemy health secret from addons, so DotWatch never compares it in Lua. Health goes straight into game-drawn bars. For the skull, a hidden status bar gets the enemy's health as its range and the damage your running DoTs still deal (read from their tooltips, refreshed on every cast) as its value. The bright skull only slides into view when the damage reaches the health, so the game does the comparison. The idea comes from DoesItDie and Smooth Animated Bars (MIT).
@@ -119,7 +119,7 @@ Then start the game or type `/reload`.
 
 - A resist is only visible while the enemy has a target or nameplate unit.
 - DoTs cast at an enemy that isn't your target, mouseover, focus or a nameplate aren't tracked.
-- In dungeons, an enemy whose nameplate disappears can't be recognized again; it gets a new row next time. No statistics there.
+- In dungeons, an enemy whose nameplate disappears and that no target, focus, party target or boss frame points at can't be recognized again; it gets a new row next time. No statistics there.
 - Freezing Trap starts on the first new debuff an enemy gets after the trap was placed; another player's debuff at that moment can set it off in DotWatch.
 - Devouring Plague jumps are a guess until the first shadow tick confirms them; another player's debuff or shadow damage at that moment can mislead it.
 - Classes other than Warlock and Priest are not much tested in game yet.
