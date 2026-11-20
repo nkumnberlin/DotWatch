@@ -263,9 +263,9 @@ ns.STRINGS.ruRU = {
   ["Tick marks on the mini bars"] = "Метки тиков на мини-полосах",
   ["Small marks where your DoT ticks next, like in the window."] = "Маленькие метки, где ваш DoT тикнет дальше, как в окне.",
   -- 0.20: Spells page, Devouring Plague jumps
-  ["Spells"] = "Заклинания",
-  ["Tracked spells: %s"] = "Отслеживаемые заклинания: %s",
-  ["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."] = "Снимите галочку, чтобы не отслеживать заклинание: без таймера, серой заглушки и красного мигания.",
+  ["Tracked spells"] = "Отслеживание",
+  ["Spells: %s"] = "Заклинания: %s",
+  ["Ticked spells are tracked. Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink. Gray names: not learned yet."] = "Отмеченные заклинания отслеживаются. Снимите галочку, чтобы отключить: ни таймера, ни серой заглушки, ни красного мигания. Серые названия: ещё не изучено.",
   ["Tracked by default. Untick to stop tracking it."] = "Отслеживается по умолчанию. Снимите галочку, чтобы отключить.",
   ["Off by default. Tick to track it."] = "По умолчанию выключено. Поставьте галочку, чтобы отслеживать.",
   ["Default list"] = "Список по умолчанию",

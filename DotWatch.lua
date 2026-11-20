@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.20.1"
+local VERSION = "0.20.2"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -3421,23 +3421,24 @@ local function buildTimersPage(pg)
     function() return db.ccWarnTime or 5 end, function(v) db.ccWarnTime = v end):SetPoint("TOPLEFT", 254, y - 14)
 end
 
--- 0.20 page: Spells. Which of your class's spells DotWatch tracks (a default list, changed by
--- ticking), and the Devouring Plague jumps for priests.
+-- 0.20 page: Tracked spells. Which of your class's spells DotWatch tracks (a default list, changed
+-- by ticking), and the Devouring Plague jumps for priests. 0.20.2: every spell of the class is
+-- listed, the ones not learned yet in gray (they can be ticked or unticked ahead of time).
 function LOOK.buildSpellsPage(g)
   local className, classFile = UnitClass("player")
   local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
   local classLabel = className or "?"
   if cc then classLabel = string.format("|cff%02x%02x%02x%s|r", cc.r * 255, cc.g * 255, cc.b * 255, classLabel) end
-  makeSection(g, string.format(L["Tracked spells: %s"], classLabel), -54)
+  makeSection(g, string.format(L["Spells: %s"], classLabel), -54)
   local help = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   help:SetPoint("TOPLEFT", 28, -74)
   help:SetPoint("RIGHT", g, "RIGHT", -28, 0)
   help:SetJustifyH("LEFT")
-  help:SetText(L["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."])
+  help:SetText(L["Ticked spells are tracked. Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink. Gray names: not learned yet."])
   local none = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  none:SetPoint("TOPLEFT", 28, -98)
+  none:SetPoint("TOPLEFT", 28, -114)
   none:SetText(L["nothing found yet"])
-  local Y0, ROW, COLX = -94, 24, { 26, 270 }
+  local Y0, ROW, COLX = -108, 24, { 26, 270 }
   local checks = {}
   for _, sp in ipairs(SPELLS) do
     if isMine(sp) then
@@ -3474,19 +3475,18 @@ function LOOK.buildSpellsPage(g)
   end
 
   g:HookScript("OnShow", function()
-    -- only the spells you know, two columns
+    -- 0.20.2: every spell of your class, two columns; not learned yet = gray name, faded icon
     local i = 0
     for _, cb in ipairs(checks) do
-      local show = known[cb.sp.name] ~= nil
-      cb:SetShown(show)
-      if show then
-        local id = type(known[cb.sp.name]) == "number" and known[cb.sp.name] or cb.sp.id
-        cb.icon:SetTexture(iconOf(id))
-        if not TRACK.on(cb.sp) then cb.icon:SetDesaturated(true) else cb.icon:SetDesaturated(false) end
-        cb:ClearAllPoints()
-        cb:SetPoint("TOPLEFT", COLX[i % 2 + 1], Y0 - math.floor(i / 2) * ROW)
-        i = i + 1
-      end
+      local learned = known[cb.sp.name] ~= nil
+      local id = type(known[cb.sp.name]) == "number" and known[cb.sp.name] or cb.sp.id
+      cb.icon:SetTexture(id and iconOf(id) or 136197)
+      cb.icon:SetDesaturated(not TRACK.on(cb.sp))
+      cb.icon:SetAlpha(learned and 1 or 0.45)
+      if learned then cb.text:SetTextColor(1, 1, 1) else cb.text:SetTextColor(0.5, 0.5, 0.5) end
+      cb:ClearAllPoints()
+      cb:SetPoint("TOPLEFT", COLX[i % 2 + 1], Y0 - math.floor(i / 2) * ROW)
+      i = i + 1
     end
     none:SetShown(i == 0)
     local y = Y0 - math.ceil(i / 2) * ROW - 14
@@ -4046,7 +4046,7 @@ local function buildOptions()
   ---------------- page 6: Statistics ----------------
   buildStatsPage(pages[6])
 
-  ---------------- page 7: Spells (0.20), listed after Timers ----------------
+  ---------------- page 7: Tracked spells (0.20), listed after Timers ----------------
   LOOK.buildSpellsPage(pages[7])
 
   ---------------- navigation list on the left ----------------
@@ -4079,7 +4079,7 @@ local function buildOptions()
       pv.redraw()
     end
   end
-  local NAV = { { 1, "General" }, { 2, "Display" }, { 3, "Look" }, { 4, "Timers" }, { 7, "Spells" },
+  local NAV = { { 1, "General" }, { 2, "Display" }, { 3, "Look" }, { 4, "Timers" }, { 7, "Tracked spells" },
     { 5, "Enemies" }, { 6, "Statistics" } }
   for pos, entry in ipairs(NAV) do
     local i, label = entry[1], entry[2]

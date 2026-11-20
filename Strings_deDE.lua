@@ -262,9 +262,9 @@ ns.STRINGS.deDE = {
   ["Tick marks on the mini bars"] = "Tick-Striche an den Mini-Balken",
   ["Small marks where your DoT ticks next, like in the window."] = "Kleine Striche, wo dein DoT als Nächstes tickt, wie im Fenster.",
   -- 0.20: Spells page, Devouring Plague jumps
-  ["Spells"] = "Zauber",
-  ["Tracked spells: %s"] = "Verfolgte Zauber: %s",
-  ["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."] = "Haken weg = Zauber wird nicht mehr verfolgt: kein Timer, kein grauer Platzhalter, kein rotes Blinken.",
+  ["Tracked spells"] = "Verfolgte Zauber",
+  ["Spells: %s"] = "Zauber: %s",
+  ["Ticked spells are tracked. Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink. Gray names: not learned yet."] = "Angehakte Zauber werden verfolgt. Haken weg = kein Timer, kein grauer Platzhalter, kein rotes Blinken. Graue Namen: noch nicht gelernt.",
   ["Tracked by default. Untick to stop tracking it."] = "Standardmäßig verfolgt. Haken entfernen, um ihn nicht mehr zu verfolgen.",
   ["Off by default. Tick to track it."] = "Standardmäßig aus. Haken setzen, um ihn zu verfolgen.",
   ["Default list"] = "Standardliste",

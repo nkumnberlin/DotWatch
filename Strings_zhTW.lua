@@ -265,9 +265,9 @@ ns.STRINGS.zhTW = {
   ["Tick marks on the mini bars"] = "迷你條上的跳數標記",
   ["Small marks where your DoT ticks next, like in the window."] = "小標記顯示DoT下一次跳的位置，和視窗裡一樣。",
   -- 0.20: Spells page, Devouring Plague jumps
-  ["Spells"] = "法術",
-  ["Tracked spells: %s"] = "追蹤的法術：%s",
-  ["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."] = "取消勾選即不再追蹤該法術：沒有計時器、沒有灰色佔位、沒有紅色閃爍。",
+  ["Tracked spells"] = "追蹤法術",
+  ["Spells: %s"] = "法術：%s",
+  ["Ticked spells are tracked. Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink. Gray names: not learned yet."] = "勾選的法術會被追蹤。取消勾選即停止追蹤：沒有計時器、沒有灰色佔位、沒有紅色閃爍。灰色名稱：尚未學會。",
   ["Tracked by default. Untick to stop tracking it."] = "預設追蹤。取消勾選可停止追蹤。",
   ["Off by default. Tick to track it."] = "預設關閉。勾選以追蹤。",
   ["Default list"] = "預設清單",
