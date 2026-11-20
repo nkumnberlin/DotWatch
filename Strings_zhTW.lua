@@ -264,4 +264,19 @@ ns.STRINGS.zhTW = {
   -- 0.19.4
   ["Tick marks on the mini bars"] = "迷你條上的跳數標記",
   ["Small marks where your DoT ticks next, like in the window."] = "小標記顯示DoT下一次跳的位置，和視窗裡一樣。",
+  -- 0.20: Spells page, Devouring Plague jumps
+  ["Spells"] = "法術",
+  ["Tracked spells: %s"] = "追蹤的法術：%s",
+  ["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."] = "取消勾選即不再追蹤該法術：沒有計時器、沒有灰色佔位、沒有紅色閃爍。",
+  ["Tracked by default. Untick to stop tracking it."] = "預設追蹤。取消勾選可停止追蹤。",
+  ["Off by default. Tick to track it."] = "預設關閉。勾選以追蹤。",
+  ["Default list"] = "預設清單",
+  ["Devouring Plague jumps"] = "噬靈瘟疫跳躍",
+  ["Follow Devouring Plague jumps"] = "追蹤噬靈瘟疫的跳躍",
+  ["Devouring Contagion talent: when an enemy dies with your Devouring Plague on it, the plague jumps to 2 nearby enemies. DotWatch guesses which ones (they get a new debuff at that moment) and drops a guess when no shadow damage follows. A guess can be wrong in a group."] = "噬靈傳染天賦：帶有你的噬靈瘟疫的敵人死亡時，瘟疫會跳到附近2個敵人身上。DotWatch會猜測是哪兩個（它們在那一刻獲得新的減益），如果之後沒有暗影傷害就放棄猜測。在隊伍中可能猜錯。",
+  ["Talent: learned"] = "天賦：已學習",
+  ["Talent: not learned (nothing to follow)"] = "天賦：未學習（無需追蹤）",
+  ["Talent: not readable here, jumps are followed anyway"] = "天賦：此處無法讀取，仍會追蹤跳躍",
+  ["jumped"] = "已跳躍",
+  ["(not tracked)"] = "（未追蹤）",
 }

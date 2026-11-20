@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.19.5"
+local VERSION = "0.20"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -135,7 +135,9 @@ local SPELLS = {
   -- Priest
   { class = "PRIEST", name = "Shadow Word: Pain", id = 589,   dur = 18, color = { 0.60, 0.25, 0.85 }, slot = "swp", tick = 3, school = 32 },
   { class = "PRIEST", name = "Devouring Plague", id = 2944,    dur = 24, color = { 0.35, 0.80, 0.30 }, slot = "plague", tick = 3, school = 32 },
-  { class = "PRIEST", name = "Holy Fire", id = 14914,           dur = 10, color = { 1.00, 0.75, 0.25 }, slot = "holyfire", tick = 2, school = 2 },
+  -- 0.20: off by default (a priest tester: Shadow priests never cast it, so it only showed as
+  -- a gray row and a red "missing" blink). Spells page › tick it to track it.
+  { class = "PRIEST", name = "Holy Fire", id = 14914,           dur = 10, color = { 1.00, 0.75, 0.25 }, slot = "holyfire", tick = 2, school = 2, track = false },
   { class = "PRIEST", name = "Shackle Undead", id = 9484,      dur = 50, color = { 0.85, 0.85, 0.95 }, cc = true, calm = true },
   { class = "PRIEST", name = "Chastise", id = 1277331,            dur = 2,  color = { 1.00, 0.90, 0.55 }, cc = true },
   { class = "PRIEST", name = "Silence", id = 15487,             dur = 5,  color = { 0.55, 0.45, 0.80 }, cc = true },
@@ -222,6 +224,16 @@ local function isMine(s) return s.class == (myClass() or "WARLOCK") end
 -- only the spells of the class you play (two classes can share a name, e.g. Lacerate)
 local DEF_BY_NAME, SLOT_ORDER = {}, {}
 local LOOK -- 0.16: declared here so code above its table (resist messages) can use LOOK.spell
+-- 0.20: which spells are tracked (Spells page), and the Devouring Contagion jumps (below).
+-- The default list: every spell, except the ones with `track = false` in SPELLS.
+-- db.track[English name] = true/false only holds what the player changed.
+local TRACK = {}
+function TRACK.default(s) return s.track ~= false end
+function TRACK.on(s)
+  local v = db and db.track and db.track[s.name]
+  if v ~= nil then return v end
+  return TRACK.default(s)
+end
 local function rebuildDefs()
   wipe(DEF_BY_NAME)
   wipe(SLOT_ORDER)
@@ -247,7 +259,18 @@ local function rebuildDefs()
 end
 local function sampleSpells()
   local list = CLASS_SAMPLE[myClass() or "WARLOCK"] or CLASS_SAMPLE.WARLOCK
-  return list[1], list[2], list[3]
+  -- 0.20: untracked spells stay out of the preview; other tracked spells of the class fill in
+  local out, used = {}, {}
+  for _, name in ipairs(list) do
+    local s = DEF_BY_NAME[name]
+    if not s or TRACK.on(s) then out[#out + 1] = name used[name] = true end
+  end
+  for _, s in ipairs(SPELLS) do
+    if #out >= 3 then break end
+    if isMine(s) and not used[s.name] and TRACK.on(s) then out[#out + 1] = s.name used[s.name] = true end
+  end
+  for i = #out + 1, 3 do out[i] = out[1] or list[i] end
+  return out[1], out[2], out[3]
 end
 rebuildDefs()
 
@@ -330,6 +353,7 @@ local function spellInfo(id)
   local def = DEF_BY_NAME[name]
   if not def then spellCache[id] = false return nil end
   if def.cc and db and db.trackCC == false then return nil end
+  if not TRACK.on(def) then return nil end -- 0.20: unticked on the Spells page (not cached)
   local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
   local descDur, dmg = KILL.readDesc(desc, def)
   local info = { id = id, name = def.name, shown = name, def = def, group = def.group, slot = def.slot, color = def.color,
@@ -429,6 +453,7 @@ local function scanSpellbook(why)
   else bookMethod = "none" end
   -- spells seen in casts count as known too (in case the book scan misses one)
   for name in pairs(db.castKnown or {}) do if not known[name] then known[name] = true end end
+  if myClass() == "PRIEST" then TRACK.scanTalent() end -- 0.20: Devouring Contagion
   local list = {}
   for _, s in ipairs(SPELLS) do
     if known[s.name] then list[#list + 1] = s.name .. "=" .. tostring(known[s.name]) end
@@ -444,7 +469,7 @@ end
 -- the spell shown on a slot's placeholder: first known spell of that slot
 local function slotSpell(slot)
   for _, s in ipairs(SPELLS) do
-    if s.slot == slot and known[s.name] then return s, known[s.name] end
+    if s.slot == slot and known[s.name] and TRACK.on(s) then return s, known[s.name] end
   end
   return nil
 end
@@ -499,6 +524,7 @@ end
 local function removeMob(guid, why)
   local m = mobs[guid]
   if m then
+    if why:sub(1, 4) == "dead" and TRACK.onDeath then TRACK.onDeath(m, guid) end -- 0.20
     mobs[guid] = nil
     dirty = true
     dbg("REMOVE " .. m.name .. " [" .. short(guid) .. "]: " .. why)
@@ -675,9 +701,13 @@ end
 
 local orphans = {} -- castGUID -> { info, t }: SUCCEEDED that arrived before (or without) its SENT
 
-local function startDot(info, guid, name, t, how)
+-- jump = true (0.20): started by Devouring Contagion, not by a cast of ours: no cast counted,
+-- no resist check
+local function startDot(info, guid, name, t, how, jump)
   local m = getMob(guid, name)
-  if not db.castKnown[info.name] then
+  if jump then
+    -- nothing for the cast statistics and the fight summary
+  elseif not db.castKnown[info.name] then
     db.castKnown[info.name] = true
     if not known[info.name] then known[info.name] = info.id dirty = true end
   end
@@ -700,13 +730,16 @@ local function startDot(info, guid, name, t, how)
     end
   end
   m.dots[info.id] = d
-  fight.casts = fight.casts + 1
-  if prev then fight.refreshes = fight.refreshes + 1 end
-  stat(m.guid, m.name, info.name, "c")
+  if not jump then
+    fight.casts = fight.casts + 1
+    if prev then fight.refreshes = fight.refreshes + 1 end
+    stat(m.guid, m.name, info.name, "c")
+  end
   dbg(string.format("START %s on %s [%s] %ds%s%s", info.name, m.name, short(m.guid), dur,
     prev and " (refresh)" or "", how and (" " .. how) or ""))
-  C_Timer.After(0.1, function() evaluate(m, d) end)
+  if not jump then C_Timer.After(0.1, function() evaluate(m, d) end) end
   dirty = true
+  return d
 end
 
 local function onSent(destName, castGUID, spellID)
@@ -791,6 +824,160 @@ local function onSucceeded(castGUID, spellID)
   end)
 end
 
+---------------------------------------------------------------------------
+-- 0.20: Devouring Contagion (Forever priest talent, Shadow tree): when an enemy dies with
+-- your Devouring Plague on it, the plague jumps to 2 nearby enemies. That is no cast and the
+-- combat log is closed, so it is a guess, like the Freezing Trap: the enemies that get a new
+-- debuff (UNIT_AURA added) around the moment of the death. A guess is confirmed by the next
+-- shadow tick on that enemy and dropped when none comes. CONTAGION lines in the debug log.
+---------------------------------------------------------------------------
+TRACK.PLAGUE = "Devouring Plague"
+TRACK.JUMPS = 2
+TRACK.BEFORE, TRACK.AFTER = 0.6, 1.0 -- seconds around the death (scan() sees a death up to 0.2 s late)
+TRACK.WAIT = 0.15 -- let our own cast's SUCCEEDED arrive before calling an aura a jump
+TRACK.added = {}  -- key -> { t, name, added, updated, hostile }: last aura change per unit
+TRACK.open = {}   -- jumps still looking for enemies: { t, from, src, left, info, got }
+TRACK.talent = "unknown" -- "yes" / "no" / "unknown" (talent tree not readable or other language)
+
+function TRACK.scanTalent()
+  local state = "unknown"
+  if GetNumTalentTabs and GetNumTalents and GetTalentInfo then
+    for tab = 1, num(plain(GetNumTalentTabs)) or 0 do
+      for i = 1, num(plain(GetNumTalents, tab)) or 0 do
+        -- classic order: name, icon, tier, column, rank, maxRank
+        local ok, name, _, _, _, rank = pcall(GetTalentInfo, tab, i)
+        name, rank = ok and str(name), ok and num(rank)
+        if name and (name == "Devouring Contagion" or name == L["Devouring Contagion"]) then
+          state = (rank or 0) > 0 and "yes" or "no"
+        end
+      end
+    end
+  end
+  if state ~= TRACK.talent then dbg("TALENT Devouring Contagion: " .. state) end
+  TRACK.talent = state
+end
+
+function TRACK.contagionOn()
+  return myClass() == "PRIEST" and db.contagion ~= false and TRACK.talent ~= "no"
+end
+
+-- one enemy for a jump (a = its last aura change)
+function TRACK.take(j, k, a)
+  if j.left <= 0 or j.got[k] or k == j.src or a.hostile == false then return end
+  if a.t < j.t - TRACK.BEFORE or a.t > j.t + TRACK.AFTER then return end
+  local m = mobs[k]
+  local had = m and m.dots[j.info.id]
+  -- "updated" can be anything; it only counts where our plague already was (a refresh)
+  if not a.added and not had then return end
+  if m then
+    for _, d in pairs(m.dots) do
+      if not d.jumped and math.abs(d.start - a.t) <= 0.1 then return end -- our own cast landing
+    end
+  end
+  for _, p in pairs(pending) do if p.guid == k then return end end -- our cast is on its way there
+  j.got[k] = true
+  j.left = j.left - 1
+  local d = startDot(j.info, k, a.name, a.t, "(jumped from " .. j.from .. ", " ..
+    string.format("%+.2fs", a.t - j.t) .. (a.added and "" or ", refresh") .. ")", true)
+  d.jumped, d.guess = j.t, true
+  local nm = mobs[k]
+  nm.jumpT = j.t -- shadow ticks on it are logged for 40 s (how long does a jumped plague last?)
+  addFlash(nm, LOOK.spell(j.info) .. ": " .. L["jumped"], 0.45, 1, 0.45)
+end
+
+function TRACK.onDeath(m, key)
+  if not TRACK.contagionOn() then return end
+  local t = now()
+  local plague
+  for _, d in pairs(m.dots) do
+    if d.info.name == TRACK.PLAGUE and d.expires > t then plague = d end
+  end
+  if not plague then return end
+  local j = { t = t, from = m.name, src = key, left = TRACK.JUMPS, info = plague.info, got = {} }
+  dbg(string.format("CONTAGION %s [%s] died with Devouring Plague (%.1fs left)", m.name, short(key), plague.expires - t))
+  TRACK.open[#TRACK.open + 1] = j
+  C_Timer.After(TRACK.WAIT, function()
+    -- the aura changes around the death (before we saw it, or in the same frame), closest first
+    local list = {}
+    for k, a in pairs(TRACK.added) do list[#list + 1] = { k = k, a = a } end
+    table.sort(list, function(x, y) return math.abs(x.a.t - j.t) < math.abs(y.a.t - j.t) end)
+    for _, c in ipairs(list) do TRACK.take(j, c.k, c.a) end
+  end)
+  C_Timer.After(TRACK.AFTER + TRACK.WAIT + 0.05, function()
+    if j.left > 0 then
+      dbg(string.format("CONTAGION from %s: %d of %d jumps not found", j.from, j.left, TRACK.JUMPS))
+    end
+  end)
+end
+
+-- every aura change on an enemy (called from onUnitAura while the talent counts)
+function TRACK.onAura(unit, k, added, updated)
+  if plain(UnitIsDead, unit) == true then return end
+  local t = now()
+  local a = { t = t, name = nameOf(unit), added = added, updated = updated,
+    hostile = plain(UnitCanAttack, "player", unit) }
+  TRACK.added[k] = a
+  if #TRACK.open == 0 then return end
+  C_Timer.After(TRACK.WAIT, function()
+    for i = #TRACK.open, 1, -1 do
+      local j = TRACK.open[i]
+      if t - j.t > TRACK.AFTER or j.left <= 0 then
+        table.remove(TRACK.open, i)
+      else
+        TRACK.take(j, k, a)
+      end
+    end
+  end)
+end
+
+-- from scan(): confirm a guessed jump by a shadow tick, or drop it
+function TRACK.check(m, g, t)
+  for id, d in pairs(m.dots) do
+    if d.guess then
+      local last = m.lastTick and m.lastTick[d.info.def.school or 32] or 0
+      if last > d.start then
+        d.guess, d.confirmed = nil, true
+        dirty = true
+        dbg(string.format("CONTAGION confirmed on %s [%s]: shadow tick %.1fs after the jump", m.name, short(g), last - d.start))
+      elseif m.tokenSince and t - math.max(d.start, m.tokenSince) > (d.info.def.tick or 3) * 1.5 + 1.5 then
+        m.dots[id] = d.prev -- a refresh guess gives back the plague that ran before
+        dirty = true
+        dbg(string.format("CONTAGION dropped on %s [%s]: no shadow tick", m.name, short(g)))
+      end
+    end
+  end
+end
+
+function TRACK.prune(t)
+  for k, a in pairs(TRACK.added) do
+    if t - a.t > 5 then TRACK.added[k] = nil end
+  end
+end
+
+-- Spells page: track a spell or not
+function TRACK.set(s, on)
+  db.track = db.track or {}
+  if on == TRACK.default(s) then db.track[s.name] = nil else db.track[s.name] = on end
+  wipe(spellCache)
+  if not on then
+    for _, m in pairs(mobs) do
+      for id, d in pairs(m.dots) do
+        if d.info.name == s.name then m.dots[id] = nil end
+      end
+    end
+  end
+  dbg("TRACK " .. s.name .. (on and " on" or " off"))
+  dirty = true
+end
+function TRACK.reset()
+  if db.track then wipe(db.track) end
+  for _, s in ipairs(SPELLS) do
+    if isMine(s) and not TRACK.on(s) then TRACK.set(s, false) end
+  end
+  wipe(spellCache)
+  dirty = true
+end
+
 local function onUnitCombat(unit, action, _, _, school)
   action = str(action)
   if not action then return end
@@ -802,6 +989,10 @@ local function onUnitCombat(unit, action, _, _, school)
     if m and school then
       m.lastTick = m.lastTick or {}
       m.lastTick[school] = now()
+      -- 0.20: shadow ticks after a Devouring Plague jump, to learn how long a jumped plague lasts
+      if school == 32 and m.jumpT and now() - m.jumpT < 40 then
+        dbg(string.format("CONTAGION TICK on %s [%s] %+.1fs after the jump", m.name, short(g), now() - m.jumpT))
+      end
     end
     return
   end
@@ -824,6 +1015,7 @@ local function onUnitAura(unit, info)
     local hasAdded = issecret(added) or (type(added) == "table" and #added > 0)
     local hasUpdated = issecret(updated) or (type(updated) == "table" and #updated > 0)
     if hasAdded or hasUpdated then lastAura[guid] = now() end
+    if (hasAdded or hasUpdated) and TRACK.contagionOn() then TRACK.onAura(unit, guid, hasAdded, hasUpdated) end
     if hasAdded and next(armed) then trapHit("aura", unit) end
     if m and hasAdded then
       local t = now()
@@ -910,6 +1102,7 @@ local function syncOutOfCombat()
 end
 
 local function scan()
+  TRACK.prune(now())
   if next(mobs) == nil then return end
   for _, m in pairs(mobs) do m.unit = nil end
   for _, u in ipairs(TOKENS) do
@@ -947,7 +1140,7 @@ local function scan()
         if iv and sch then
           local last = m.lastTick and m.lastTick[sch] or 0
           local ref = math.max(d.start, m.tokenSince or math.huge, last, m.shieldedAt or 0)
-          if not d.lost and m.tokenSince and t - ref > iv * 1.5 + 1 and t - d.start > iv + 1 then
+          if not d.lost and not d.guess and m.tokenSince and t - ref > iv * 1.5 + 1 and t - d.start > iv + 1 then
             d.lost, d.lostAt = true, t
             fight.lost = fight.lost + 1
             dirty = true
@@ -959,6 +1152,7 @@ local function scan()
         end
       end
     end
+    TRACK.check(m, g, t) -- 0.20: guessed Devouring Plague jumps
     for id, d in pairs(m.dots) do
       if d.expires <= t then
         m.dots[id] = nil
@@ -2707,6 +2901,11 @@ ev:SetScript("OnEvent", function(_, event, ...)
     if type(u) == "string" and not issecret(u) then
       local k = plateKey[u]
       plateKey[u] = nil
+      -- 0.20: an enemy with a readable GUID that dies away from your target was only noticed
+      -- when its timers ran out. Its plate goes at the moment of death (Devouring Contagion
+      -- needs that moment).
+      local g = guidOf(u)
+      if g and mobs[g] and plain(UnitIsDead, u) == true then removeMob(g, "dead (nameplate gone)") end
       if k and mobs[k] then
         if plain(UnitIsDead, u) == true then
           removeMob(k, "dead (nameplate gone)")
@@ -3216,6 +3415,93 @@ local function buildTimersPage(pg)
     function() return db.ccWarnTime or 5 end, function(v) db.ccWarnTime = v end):SetPoint("TOPLEFT", 254, y - 14)
 end
 
+-- 0.20 page: Spells. Which of your class's spells DotWatch tracks (a default list, changed by
+-- ticking), and the Devouring Plague jumps for priests.
+function LOOK.buildSpellsPage(g)
+  local className, classFile = UnitClass("player")
+  local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
+  local classLabel = className or "?"
+  if cc then classLabel = string.format("|cff%02x%02x%02x%s|r", cc.r * 255, cc.g * 255, cc.b * 255, classLabel) end
+  makeSection(g, string.format(L["Tracked spells: %s"], classLabel), -54)
+  local help = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  help:SetPoint("TOPLEFT", 28, -74)
+  help:SetPoint("RIGHT", g, "RIGHT", -28, 0)
+  help:SetJustifyH("LEFT")
+  help:SetText(L["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."])
+  local none = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  none:SetPoint("TOPLEFT", 28, -98)
+  none:SetText(L["nothing found yet"])
+  local Y0, ROW, COLX = -94, 24, { 26, 270 }
+  local checks = {}
+  for _, sp in ipairs(SPELLS) do
+    if isMine(sp) then
+      local cb = makeCheck(g, LOOK.spell(sp),
+        TRACK.default(sp) and "Tracked by default. Untick to stop tracking it." or "Off by default. Tick to track it.",
+        function() return TRACK.on(sp) end, function(v) TRACK.set(sp, v) end)
+      cb.icon = cb:CreateTexture(nil, "ARTWORK")
+      cb.icon:SetSize(16, 16)
+      cb.icon:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+      cb.text:ClearAllPoints()
+      cb.text:SetPoint("LEFT", cb.icon, "RIGHT", 4, 0)
+      cb.text:SetWidth(190)
+      cb.text:SetJustifyH("LEFT")
+      cb.text:SetWordWrap(false)
+      cb:SetHitRectInsets(0, -212, 0, 0)
+      cb.sp = sp
+      checks[#checks + 1] = cb
+    end
+  end
+  makeButton(g, "Default list", 120, function()
+    TRACK.reset()
+    for _, c in ipairs(checks) do c.refresh() end
+  end):SetPoint("BOTTOMLEFT", 24, 6)
+
+  -- Devouring Contagion (priests only; makeSection's gold line can't be hidden, so others get nothing)
+  local isPriest = classFile == "PRIEST"
+  local sec, jump, state
+  if isPriest then
+    sec = makeSection(g, "Devouring Plague jumps", -300)
+    jump = makeCheck(g, "Follow Devouring Plague jumps",
+      "Devouring Contagion talent: when an enemy dies with your Devouring Plague on it, the plague jumps to 2 nearby enemies. DotWatch guesses which ones (they get a new debuff at that moment) and drops a guess when no shadow damage follows. A guess can be wrong in a group.",
+      function() return db.contagion ~= false end, function(v) db.contagion = v end)
+    state = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  end
+
+  g:HookScript("OnShow", function()
+    -- only the spells you know, two columns
+    local i = 0
+    for _, cb in ipairs(checks) do
+      local show = known[cb.sp.name] ~= nil
+      cb:SetShown(show)
+      if show then
+        local id = type(known[cb.sp.name]) == "number" and known[cb.sp.name] or cb.sp.id
+        cb.icon:SetTexture(iconOf(id))
+        if not TRACK.on(cb.sp) then cb.icon:SetDesaturated(true) else cb.icon:SetDesaturated(false) end
+        cb:ClearAllPoints()
+        cb:SetPoint("TOPLEFT", COLX[i % 2 + 1], Y0 - math.floor(i / 2) * ROW)
+        i = i + 1
+      end
+    end
+    none:SetShown(i == 0)
+    local y = Y0 - math.ceil(i / 2) * ROW - 14
+    if isPriest then
+      sec:ClearAllPoints()
+      sec:SetPoint("TOPLEFT", g, "TOPLEFT", 24, y)
+      jump:ClearAllPoints()
+      jump:SetPoint("TOPLEFT", 26, y - 22)
+      state:ClearAllPoints()
+      state:SetPoint("TOPLEFT", 54, y - 48)
+      local t = TRACK.talent
+      state:SetText(t == "yes" and L["Talent: learned"] or t == "no" and L["Talent: not learned (nothing to follow)"]
+        or L["Talent: not readable here, jumps are followed anyway"])
+    end
+  end)
+  -- the icon goes gray right away when a spell is unticked
+  for _, cb in ipairs(checks) do
+    cb:HookScript("OnClick", function(self) self.icon:SetDesaturated(not TRACK.on(self.sp)) end)
+  end
+end
+
 -- 0.19 page: Enemies (moved from Timers and General) and the nameplate status;
 -- 0.19.1: options on the left, a preview of two nameplates on the right
 function LOOK.buildEnemiesPage(g)
@@ -3589,7 +3875,7 @@ local function buildOptions()
   -- pages on the right, chosen in the list on the left
   local NAV_W = 160
   local pages = {}
-  for i = 1, 6 do
+  for i = 1, 7 do -- 0.20: page 7 = Spells
     local pg = CreateFrame("Frame", nil, f)
     pg:SetPoint("TOPLEFT", NAV_W, 0)
     pg:SetPoint("BOTTOMRIGHT", 0, 50)
@@ -3754,6 +4040,9 @@ local function buildOptions()
   ---------------- page 6: Statistics ----------------
   buildStatsPage(pages[6])
 
+  ---------------- page 7: Spells (0.20), listed after Timers ----------------
+  LOOK.buildSpellsPage(pages[7])
+
   ---------------- navigation list on the left ----------------
   local navBg = CreateFrame("Frame", nil, f, BACKDROP_TEMPLATE)
   navBg:SetPoint("TOPLEFT", 16, -50)
@@ -3784,10 +4073,13 @@ local function buildOptions()
       pv.redraw()
     end
   end
-  for i, label in ipairs({ "General", "Display", "Look", "Timers", "Enemies", "Statistics" }) do
+  local NAV = { { 1, "General" }, { 2, "Display" }, { 3, "Look" }, { 4, "Timers" }, { 7, "Spells" },
+    { 5, "Enemies" }, { 6, "Statistics" } }
+  for pos, entry in ipairs(NAV) do
+    local i, label = entry[1], entry[2]
     local it = CreateFrame("Button", nil, navBg)
     it:SetSize(NAV_W - 34, 24)
-    it:SetPoint("TOPLEFT", 9, -10 - (i - 1) * 26)
+    it:SetPoint("TOPLEFT", 9, -10 - (pos - 1) * 26)
     it.sel = it:CreateTexture(nil, "BACKGROUND")
     it.sel:SetAllPoints()
     it.sel:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
@@ -4021,8 +4313,10 @@ SlashCmdList.DOTWATCH = function(msg)
     scanSpellbook("command")
     say(string.format(L["Spellbook read via %s."], L[bookMethod]))
     for _, s in ipairs(SPELLS) do
-      if known[s.name] then say("  " .. LOOK.spell(s) .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")) end
+      if known[s.name] then say("  " .. LOOK.spell(s) .. (type(known[s.name]) == "number" and (" (" .. known[s.name] .. ")") or "")
+        .. (TRACK.on(s) and "" or ("  |cff888888" .. L["(not tracked)"] .. "|r"))) end
     end
+    if myClass() == "PRIEST" then say("  Devouring Contagion: " .. TRACK.talent .. (db.contagion == false and " (off)" or "")) end
     if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  " .. string.format(L["%s: not known"], LOOK.spell("Siphon Life"))) end
     local noName = {}
     for _, s in ipairs(SPELLS) do if isMine(s) and s.noLoc then noName[#noName + 1] = s.name .. " (" .. s.id .. ")" end end

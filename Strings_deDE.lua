@@ -261,4 +261,19 @@ ns.STRINGS.deDE = {
   -- 0.19.4
   ["Tick marks on the mini bars"] = "Tick-Striche an den Mini-Balken",
   ["Small marks where your DoT ticks next, like in the window."] = "Kleine Striche, wo dein DoT als Nächstes tickt, wie im Fenster.",
+  -- 0.20: Spells page, Devouring Plague jumps
+  ["Spells"] = "Zauber",
+  ["Tracked spells: %s"] = "Verfolgte Zauber: %s",
+  ["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."] = "Haken weg = Zauber wird nicht mehr verfolgt: kein Timer, kein grauer Platzhalter, kein rotes Blinken.",
+  ["Tracked by default. Untick to stop tracking it."] = "Standardmäßig verfolgt. Haken entfernen, um ihn nicht mehr zu verfolgen.",
+  ["Off by default. Tick to track it."] = "Standardmäßig aus. Haken setzen, um ihn zu verfolgen.",
+  ["Default list"] = "Standardliste",
+  ["Devouring Plague jumps"] = "Sprünge der Verschlingenden Seuche",
+  ["Follow Devouring Plague jumps"] = "Sprünge der Verschlingenden Seuche verfolgen",
+  ["Devouring Contagion talent: when an enemy dies with your Devouring Plague on it, the plague jumps to 2 nearby enemies. DotWatch guesses which ones (they get a new debuff at that moment) and drops a guess when no shadow damage follows. A guess can be wrong in a group."] = "Talent Verschlingende Ansteckung: Stirbt ein Gegner mit deiner Verschlingenden Seuche, springt die Seuche auf 2 Gegner in der Nähe. DotWatch rät, welche es sind (sie bekommen genau dann einen neuen Debuff), und verwirft einen Treffer, wenn kein Schattenschaden folgt. In der Gruppe kann das Raten danebenliegen.",
+  ["Talent: learned"] = "Talent: gelernt",
+  ["Talent: not learned (nothing to follow)"] = "Talent: nicht gelernt (nichts zu verfolgen)",
+  ["Talent: not readable here, jumps are followed anyway"] = "Talent: hier nicht lesbar, Sprünge werden trotzdem verfolgt",
+  ["jumped"] = "übergesprungen",
+  ["(not tracked)"] = "(nicht verfolgt)",
 }

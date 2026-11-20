@@ -262,4 +262,19 @@ ns.STRINGS.ruRU = {
   -- 0.19.4
   ["Tick marks on the mini bars"] = "Метки тиков на мини-полосах",
   ["Small marks where your DoT ticks next, like in the window."] = "Маленькие метки, где ваш DoT тикнет дальше, как в окне.",
+  -- 0.20: Spells page, Devouring Plague jumps
+  ["Spells"] = "Заклинания",
+  ["Tracked spells: %s"] = "Отслеживаемые заклинания: %s",
+  ["Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink."] = "Снимите галочку, чтобы не отслеживать заклинание: без таймера, серой заглушки и красного мигания.",
+  ["Tracked by default. Untick to stop tracking it."] = "Отслеживается по умолчанию. Снимите галочку, чтобы отключить.",
+  ["Off by default. Tick to track it."] = "По умолчанию выключено. Поставьте галочку, чтобы отслеживать.",
+  ["Default list"] = "Список по умолчанию",
+  ["Devouring Plague jumps"] = "Перескоки Всепожирающей чумы",
+  ["Follow Devouring Plague jumps"] = "Отслеживать перескоки Всепожирающей чумы",
+  ["Devouring Contagion talent: when an enemy dies with your Devouring Plague on it, the plague jumps to 2 nearby enemies. DotWatch guesses which ones (they get a new debuff at that moment) and drops a guess when no shadow damage follows. A guess can be wrong in a group."] = "Талант «Заразная чума»: когда враг с вашей Всепожирающей чумой умирает, чума перескакивает на 2 ближайших врагов. DotWatch угадывает, на каких (они получают новый дебафф в этот момент), и убирает догадку, если не следует урон от тьмы. В группе догадка может ошибаться.",
+  ["Talent: learned"] = "Талант: изучен",
+  ["Talent: not learned (nothing to follow)"] = "Талант: не изучен (нечего отслеживать)",
+  ["Talent: not readable here, jumps are followed anyway"] = "Талант: здесь не читается, перескоки всё равно отслеживаются",
+  ["jumped"] = "перескочила",
+  ["(not tracked)"] = "(не отслеживается)",
 }
