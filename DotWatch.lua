@@ -52,7 +52,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.20"
+local VERSION = "0.20.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -703,7 +703,7 @@ local orphans = {} -- castGUID -> { info, t }: SUCCEEDED that arrived before (or
 
 -- jump = true (0.20): started by Devouring Contagion, not by a cast of ours: no cast counted,
 -- no resist check
-local function startDot(info, guid, name, t, how, jump)
+local function startDot(info, guid, name, t, how, jump, durOverride)
   local m = getMob(guid, name)
   if jump then
     -- nothing for the cast statistics and the fight summary
@@ -712,7 +712,7 @@ local function startDot(info, guid, name, t, how, jump)
     if not known[info.name] then known[info.name] = info.id dirty = true end
   end
   local prev = m.dots[info.id]
-  local dur = durationOf(info)
+  local dur = durOverride or durationOf(info) -- 0.20.1: a jumped plague keeps what was left
   -- 0.15: the tooltip again, so new gear or a new rank counts (it may be unreadable in combat:
   -- then the number read earlier stays)
   if info.def.tick and C_Spell and C_Spell.GetSpellDescription then
@@ -877,11 +877,16 @@ function TRACK.take(j, k, a)
   for _, p in pairs(pending) do if p.guid == k then return end end -- our cast is on its way there
   j.got[k] = true
   j.left = j.left - 1
+  -- 0.20.1: a jumped plague runs only for what was left on the dead enemy (tester, 0.20 showed a
+  -- full 24 s). On a refresh guess the plague that already ran there keeps its time if it is longer.
+  local ends = j.expires
+  if had and had.expires > ends then ends = had.expires end
   local d = startDot(j.info, k, a.name, a.t, "(jumped from " .. j.from .. ", " ..
-    string.format("%+.2fs", a.t - j.t) .. (a.added and "" or ", refresh") .. ")", true)
+    string.format("%+.2fs, %.1fs left", a.t - j.t, ends - a.t) .. (a.added and "" or ", refresh") .. ")",
+    true, math.max(ends - a.t, 0.5))
   d.jumped, d.guess = j.t, true
   local nm = mobs[k]
-  nm.jumpT = j.t -- shadow ticks on it are logged for 40 s (how long does a jumped plague last?)
+  nm.jumpT = j.t -- shadow ticks on it are logged for 40 s
   addFlash(nm, LOOK.spell(j.info) .. ": " .. L["jumped"], 0.45, 1, 0.45)
 end
 
@@ -893,7 +898,8 @@ function TRACK.onDeath(m, key)
     if d.info.name == TRACK.PLAGUE and d.expires > t then plague = d end
   end
   if not plague then return end
-  local j = { t = t, from = m.name, src = key, left = TRACK.JUMPS, info = plague.info, got = {} }
+  local j = { t = t, from = m.name, src = key, left = TRACK.JUMPS, info = plague.info, got = {},
+    expires = plague.expires }
   dbg(string.format("CONTAGION %s [%s] died with Devouring Plague (%.1fs left)", m.name, short(key), plague.expires - t))
   TRACK.open[#TRACK.open + 1] = j
   C_Timer.After(TRACK.WAIT, function()
