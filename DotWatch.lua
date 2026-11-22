@@ -4722,8 +4722,8 @@ local function buildOptions()
       pv.redraw()
     end
   end
-  -- 0.23: Style options sits indented under Display (it belongs to the style chosen there)
-  local NAV = { { 1, "General" }, { 2, "Display" }, { 8, "Style options", sub = true }, { 3, "Look" }, { 4, "Timers" },
+  -- 0.23: Style options and Bar look (was "Look") sit indented under Display
+  local NAV = { { 1, "General" }, { 2, "Display" }, { 8, "Style options", sub = true }, { 3, "Bar look", sub = true }, { 4, "Timers" },
     { 7, "Tracked spells" }, { 5, "Enemies" }, { 6, "Statistics" } }
   for pos, entry in ipairs(NAV) do
     local i, label = entry[1], entry[2]

@@ -46,11 +46,11 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Move mode**: while the window is unlocked it has a purple background, a gold frame and a tab with a **Lock** button. Drag it into place, click Lock, and the list only shows up while timers run.
 - **Refresh warning**: DoTs pulse in their last seconds, with an optional sound (ten game sounds, from a soft click to the raid warning horn).
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop (not while the enemy is banished).
-- **Look options**: font size, bar texture, a color per DoT (for your class), window size, growth direction, fading out of combat.
+- **Bar look** (under Display): font size, bar texture, a color per DoT (for your class), window size, growth direction, fading out of combat.
 - **Demonic Brand** (Warlock, Demonology talent, 0.22): your Searing Pain starts a 10 s "Demonic Brand" timer on that enemy, shown while it runs, always as the enemy's first row (0.22.1). A gold number after the time shows how many of the pet's 6 empowered attacks are left (0.22.2: on by default; Options › Tracked spells). Forever doesn't tell addons which attack used a charge, so DotWatch counts a charge when the branded enemy takes fire or shadow damage and its debuffs change in the same moment, but not on your own DoT ticks and casts. At 0 the timer ends. Only with the talent learned.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
 - **Languages**: English, German, Russian and Chinese (simplified and traditional) clients and interface, see [Languages](#languages).
-- **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch. Pages: General, Display (with Style options), Look, Timers, Tracked spells, Enemies, Statistics.
+- **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch. Pages: General, Display (with Style options and Bar look), Timers, Tracked spells, Enemies, Statistics.
 
 ### Experimental features (off by default)
 
