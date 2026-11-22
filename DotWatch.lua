@@ -1677,13 +1677,20 @@ end
 -- preview in the options window has another; both are drawn by the same code.
 local function newCanvas(parentFrame)
   return { frame = parentFrame, headers = {}, bars = {}, flashes = {}, slims = {}, cells = {},
-    minis = {}, tcells = {}, texts = {}, lines = {} }
+    minis = {}, tcells = {}, texts = {}, lines = {}, lanes = {} }
 end
 local main = newCanvas(frame)
 
+-- 0.23 (#19): time format option. db.tenths = below how many seconds tenths show (10, 3 or 0 =
+-- never), db.timeFmt = "min" writes a minute or more as 1:05
 local function fmtTime(left)
   if left < 0 then left = 0 end
-  return left >= 10 and string.format("%d", left) or string.format("%.1f", left)
+  local tenths = db and db.tenths or 10
+  if left < tenths then return string.format("%.1f", left) end
+  if db and db.timeFmt == "min" and left >= 60 then
+    return string.format("%d:%02d", math.floor(left / 60), math.floor(left % 60))
+  end
+  return string.format("%d", left)
 end
 local function timeColor(fs, left)
   if left < 3 then fs:SetTextColor(1, 0.35, 0.3) else fs:SetTextColor(1, 1, 1) end
@@ -1940,6 +1947,54 @@ local function getTcell(cv, i)
   c.line:SetPoint("BOTTOMRIGHT")
   cv.tcells[i] = c
   return c
+end
+
+-- 0.23 (#18) style 6: timeline lane (EventHorizon idea). "Now" is the left edge, the lane looks
+-- db.lineSpan seconds ahead; the colored part runs to the DoT's end, dots are ticks to come.
+-- Every position is our own number (ln.w, ln.span), nothing is read back from widgets.
+function LOOK.getLane(cv, i)
+  local ln = cv.lanes[i]
+  if ln then return ln end
+  ln = CreateFrame("Frame", nil, cv.frame)
+  ln.bg = ln:CreateTexture(nil, "BACKGROUND")
+  ln.bg:SetAllPoints()
+  ln.icon = ln:CreateTexture(nil, "ARTWORK")
+  ln.icon:SetPoint("RIGHT", ln, "LEFT", -2, 0)
+  ln.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  ln.grid = {}
+  ln.seg = ln:CreateTexture(nil, "ARTWORK")
+  ln.seg:SetPoint("TOPLEFT")
+  ln.seg:SetPoint("BOTTOMLEFT")
+  ln.now = ln:CreateTexture(nil, "OVERLAY")
+  ln.now:SetColorTexture(1, 0.82, 0, 0.9)
+  ln.now:SetWidth(2)
+  ln.now:SetPoint("TOPLEFT", 0, 2)
+  ln.now:SetPoint("BOTTOMLEFT", 0, -2)
+  ln.dots = {}
+  ln.time = ln:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  ln.time:SetJustifyH("LEFT")
+  cv.lanes[i] = ln
+  return ln
+end
+
+-- grid lines every 5 s (thin, dark), for the lane's width and span
+function LOOK.laneGrid(ln)
+  local count = 0
+  for s = 5, ln.span - 1, 5 do
+    count = count + 1
+    local g = ln.grid[count]
+    if not g then
+      g = ln:CreateTexture(nil, "BORDER")
+      g:SetColorTexture(1, 1, 1, 0.12)
+      g:SetWidth(1)
+      ln.grid[count] = g
+    end
+    g:ClearAllPoints()
+    g:SetPoint("TOP", ln, "TOPLEFT", s / ln.span * ln.w, 0)
+    g:SetPoint("BOTTOM", ln, "BOTTOMLEFT", s / ln.span * ln.w, 0)
+    g:Show()
+  end
+  for k = count + 1, #ln.grid do ln.grid[k]:Hide() end
 end
 
 local function sameNameCount(name, list)
@@ -2296,16 +2351,17 @@ local function updatePlateTimes(t)
   end
 end
 
-local STYLES = { "bars", "slim", "icons", "table", "focus" }
+local STYLES = { "bars", "slim", "icons", "table", "focus", "timeline" }
 local STYLE_NAMES = { bars = "Bars", slim = "Slim bars", icons = "Icons with timers",
-  table = "Table", focus = "Target big, others small" }
+  table = "Table", focus = "Target big, others small", timeline = "Timeline" }
+LOOK.BAR_STYLES = { bars = true, slim = true, timeline = true } -- 0.23: the "Bars and time" page shows these
 local SIZES = {
   { 0.8, "Small", "A compact list that takes little room." },
   { 1.0, "Medium", "The normal size." },
   { 1.2, "Large", "Easier to read from a distance." },
   { 1.4, "Extra large", "For high resolutions or big screens." },
 }
-local STYLE_WIDTH = { bars = 220, slim = 200, icons = 180, table = 240, focus = 210 }
+local STYLE_WIDTH = { bars = 220, slim = 200, icons = 180, table = 240, focus = 210, timeline = 230 }
 
 local n, cv, curList -- per-layout counters, canvas, enemy list
 
@@ -2689,13 +2745,57 @@ render.focus = function(list, tg, W)
   return y
 end
 
+-- 0.23 (#18): one lane per row on a shared time axis
+render.timeline = function(list, tg, W)
+  local y = 0
+  local span = db.lineSpan or 20
+  local laneW = W - ROW_H - 2
+  for idx, m in ipairs(list) do
+    if idx > 1 then y = y + GAP end
+    y = y + placeHeader(m, tg, 0, y)
+    for _, r in ipairs(rowsFor(m)) do
+      n.tl = n.tl + 1
+      local ln = LOOK.getLane(cv, n.tl)
+      ln:SetSize(laneW, ROW_H - 4)
+      ln.w, ln.span, ln.h = laneW, span, ROW_H - 4
+      ln.icon:SetSize(ROW_H - 2, ROW_H - 2)
+      ln.icon:SetTexture(rowIcon(r))
+      ln.time:SetFontObject(LOOK.font().txt)
+      LOOK.laneGrid(ln)
+      if r.dot then
+        ln.dot = r.dot
+        ln.icon:SetDesaturated(r.dot.lost and true or false)
+        ln.icon:SetAlpha(1)
+        ln.bg:SetColorTexture(0, 0, 0, 0.5)
+      else
+        ln.dot = nil
+        ln.seg:Hide()
+        for _, dt in ipairs(ln.dots) do dt:Hide() end
+        ln.icon:SetDesaturated(true)
+        ln.icon:SetAlpha(0.35)
+        ln.bg:SetColorTexture(0.35, 0.35, 0.35, 0.22) -- gray lane = missing
+        ln.time:ClearAllPoints()
+        ln.time:SetPoint("LEFT", ln, "LEFT", 5, 0)
+        ln.time:SetText(r.immune and "|cffcc5555" .. L["imm"] .. "|r" or "")
+        ln:SetAlpha(1)
+      end
+      ln:ClearAllPoints()
+      ln:SetPoint("TOPLEFT", cv.frame, "TOPLEFT", ROW_H + 2, -y - 2)
+      ln:Show()
+      y = y + ROW_H
+    end
+    y = y + placeFlashes(m, ROW_H + 2, y)
+  end
+  return y
+end
+
 -- draw a list of enemies into a canvas in the given style; returns height, width
 local function drawCanvas(canvas, list, tg, style)
   for _, h in ipairs(canvas.headers) do
     h:Hide() h.hp:Hide() h.mob = nil
     if h.hpbar then h.hpbar:Hide() end
   end
-  for _, pool in ipairs({ canvas.bars, canvas.slims, canvas.cells, canvas.minis, canvas.tcells }) do
+  for _, pool in ipairs({ canvas.bars, canvas.slims, canvas.cells, canvas.minis, canvas.tcells, canvas.lanes }) do
     for _, w in ipairs(pool) do w:Hide() w.dot = nil end
   end
   for _, pool in ipairs({ canvas.flashes, canvas.texts, canvas.lines }) do
@@ -2708,14 +2808,15 @@ local function drawCanvas(canvas, list, tg, style)
   if #list == 0 then return 0, W end
   cv, curList = canvas, list
   canvas.W = W -- 0.19: width for the health bars under the names
-  n = { h = 0, b = 0, s = 0, c = 0, m = 0, t = 0, f = 0, x = 0, l = 0 }
+  n = { h = 0, b = 0, s = 0, c = 0, m = 0, t = 0, f = 0, x = 0, l = 0, tl = 0 }
   local h, w = render[style](list, tg, W)
   LOOK.placeGlows(canvas, n.h, h, w or W)
   return h, w or W
 end
 
--- tick marks on a bar: one thin line per damage tick still to come
-local function placeTicks(b, bar, d, t, total)
+-- tick marks on a bar: one thin line per damage tick still to come. `total` = the bar's scale
+-- in seconds; 0.23: `fill` = the bar grows instead of draining; ticks beyond the scale are skipped
+local function placeTicks(b, bar, d, t, total, fill)
   b.ticks = b.ticks or {}
   local iv = d.info.def.tick
   local count = 0
@@ -2724,7 +2825,8 @@ local function placeTicks(b, bar, d, t, total)
     for k = 1, 30 do
       local tickAt = d.start + k * iv
       if tickAt >= d.expires - 0.05 then break end
-      if tickAt > t then
+      local r = d.expires - tickAt -- time left when this tick comes
+      if tickAt > t and r < total then
         count = count + 1
         local mark = b.ticks[count]
         if not mark then
@@ -2733,14 +2835,44 @@ local function placeTicks(b, bar, d, t, total)
           mark:SetWidth(1)
           b.ticks[count] = mark
         end
+        local x = (fill and (total - r) or r) / total * w
         mark:ClearAllPoints()
-        mark:SetPoint("TOP", bar, "TOPLEFT", (d.expires - tickAt) / total * w, 0)
-        mark:SetPoint("BOTTOM", bar, "BOTTOMLEFT", (d.expires - tickAt) / total * w, 0)
+        mark:SetPoint("TOP", bar, "TOPLEFT", x, 0)
+        mark:SetPoint("BOTTOM", bar, "BOTTOMLEFT", x, 0)
         mark:Show()
       end
     end
   end
   for k = count + 1, #b.ticks do b.ticks[k]:Hide() end
+end
+
+-- 0.23 (#19): a bar's scale and value. db.barScale = 0 (own length) or the same seconds for
+-- every bar; db.barFill = "fill" lets the bar grow instead of drain
+function LOOK.barValue(left, total)
+  local max = (db.barScale or 0) > 0 and db.barScale or (total > 0 and total or 1)
+  local v = math.min(left > 0 and left or 0, max)
+  if db.barFill == "fill" then v = max - v end
+  return max, v
+end
+
+-- 0.23 (#19): bright spark at the bar's edge (cast bar texture); p = 0..1 along the bar
+function LOOK.placeSpark(owner, bar, p)
+  local s = owner.spark
+  if not (db.spark == true and p > 0.005 and p < 0.995) then
+    if s then s:Hide() end
+    return
+  end
+  if not s then
+    s = bar:CreateTexture(nil, "OVERLAY")
+    s:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
+    s:SetBlendMode("ADD")
+    owner.spark = s
+  end
+  local w, h = bar:GetWidth() or 0, bar:GetHeight() or 0
+  s:SetSize(10, h * 2.2)
+  s:ClearAllPoints()
+  s:SetPoint("CENTER", bar, "LEFT", p * w, 0)
+  s:Show()
 end
 
 LOOK.placeTicks = placeTicks -- 0.19.4: also used by the nameplate mini bars
@@ -2799,6 +2931,47 @@ function LOOK.slotRows(m, t)
   return rows, missing
 end
 
+-- 0.23 (#18): move a timeline lane to the time t: segment to the DoT's end, ticks as dots, the
+-- seconds right after the segment (inside it when the segment fills the lane)
+function LOOK.updateLane(ln, t)
+  local d = ln.dot
+  local left = d.expires - t
+  local w, span = ln.w, ln.span
+  local px = math.min(math.max(left, 0), span) / span * w
+  local k = LOOK.ccWarn(d, left, t)
+  local c = d.lost and { 0.4, 0.4, 0.4 } or LOOK.color(d.info)
+  ln.seg:SetColorTexture(c[1] + (1 - c[1]) * k, c[2] + (0.12 - c[2]) * k, c[3] + (0.08 - c[3]) * k, 0.9)
+  if px >= 1 then ln.seg:SetWidth(px) ln.seg:Show() else ln.seg:Hide() end
+  local count = 0
+  local iv = d.info.def.tick
+  if iv and db.ticks ~= false and not d.lost then
+    for i = 1, 30 do
+      local tickAt = d.start + i * iv
+      if tickAt >= d.expires - 0.05 or tickAt - t > span then break end
+      if tickAt > t then
+        count = count + 1
+        local dt = ln.dots[count]
+        if not dt then
+          dt = ln:CreateTexture(nil, "OVERLAY")
+          dt:SetColorTexture(1, 1, 1, 0.9)
+          ln.dots[count] = dt
+        end
+        local s = math.max(3, math.floor((ln.h or 12) / 3))
+        dt:SetSize(s, s)
+        dt:ClearAllPoints()
+        dt:SetPoint("CENTER", ln, "LEFT", (tickAt - t) / span * w, 0)
+        dt:Show()
+      end
+    end
+  end
+  for i = count + 1, #ln.dots do ln.dots[i]:Hide() end
+  ln.time:ClearAllPoints()
+  if px + 30 <= w then ln.time:SetPoint("LEFT", ln, "LEFT", px + 3, 0)
+  else ln.time:SetPoint("RIGHT", ln, "RIGHT", -2, 0) end
+  timeText(ln.time, d, left)
+  ln:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t) * LOOK.dimRow(d))
+end
+
 local function updateCanvas(canvas, t)
   LOOK.updateGlows(canvas, t) -- 0.21: resist flash
   -- soft red blink on the name of an enemy that misses DoTs
@@ -2822,34 +2995,41 @@ local function updateCanvas(canvas, t)
   for _, b in ipairs(canvas.bars) do
     local d = b.dot
     if d and b:IsShown() then
-      local total = d.expires - d.start
       local left = d.expires - t
-      b:SetMinMaxValues(0, total > 0 and total or 1)
-      b:SetValue(left > 0 and left or 0)
+      local max, val = LOOK.barValue(left, d.expires - d.start)
+      b:SetMinMaxValues(0, max)
+      b:SetValue(val)
       timeText(b.time, d, left)
       b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t) * LOOK.dimRow(d))
       local k = LOOK.ccWarn(d, left, t)
       if k > 0 or b.ccTint then LOOK.tintBar(b, d, k) b.ccTint = k > 0 end
-      placeTicks(b, b, d, t, total)
-    elseif b.ticks then
-      for _, mark in ipairs(b.ticks) do mark:Hide() end
+      placeTicks(b, b, d, t, max, db.barFill == "fill")
+      LOOK.placeSpark(b, b, val / max)
+    else
+      if b.ticks then for _, mark in ipairs(b.ticks) do mark:Hide() end end
+      if b.spark then b.spark:Hide() end
     end
   end
   for _, b in ipairs(canvas.slims) do
     local d = b.dot
     if d and b:IsShown() then
-      local total = d.expires - d.start
       local left = d.expires - t
-      b.bar:SetMinMaxValues(0, total > 0 and total or 1)
-      b.bar:SetValue(left > 0 and left or 0)
+      local max, val = LOOK.barValue(left, d.expires - d.start)
+      b.bar:SetMinMaxValues(0, max)
+      b.bar:SetValue(val)
       timeText(b.time, d, left)
       b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t) * LOOK.dimRow(d))
       local k = LOOK.ccWarn(d, left, t)
       if k > 0 or b.ccTint then LOOK.tintBar(b.bar, d, k) b.ccTint = k > 0 end
-      placeTicks(b, b.bar, d, t, total)
-    elseif b.ticks then
-      for _, mark in ipairs(b.ticks) do mark:Hide() end
+      placeTicks(b, b.bar, d, t, max, db.barFill == "fill")
+      LOOK.placeSpark(b, b.bar, val / max)
+    else
+      if b.ticks then for _, mark in ipairs(b.ticks) do mark:Hide() end end
+      if b.spark then b.spark:Hide() end
     end
+  end
+  for _, ln in ipairs(canvas.lanes) do
+    if ln.dot and ln:IsShown() then LOOK.updateLane(ln, t) end
   end
   for _, pool in ipairs({ canvas.cells, canvas.minis, canvas.tcells }) do
     for _, c in ipairs(pool) do
@@ -3752,6 +3932,37 @@ local function buildTimersPage(pg)
   makeButton(pg, "Test", 60, function() testBars() end):SetPoint("TOPLEFT", 30, y)
 end
 
+-- 0.23 page: Bars and time (#19 + the Timeline span). Left column, the shared preview on the right
+-- (it shows Bars while the chosen style has no bars).
+function LOOK.buildBarsPage(pg, COL)
+  local function radio(label, help, value, key, default, x, y)
+    makeRadio(pg, label, help, value, function() local v = db[key] if v == nil then v = default end return v end,
+      function(v) db[key] = v end):SetPoint("TOPLEFT", x, y)
+  end
+  makeSection(pg, "Time format", -54, 24, COL)
+  radio("Seconds (65)", "A minute or more in seconds.", "sec", "timeFmt", "sec", 28, -78)
+  radio("Minutes (1:05)", "A minute or more as minutes and seconds.", "min", "timeFmt", "sec", 28, -100)
+  radio("Tenths under 10 s", "9.5 instead of 9 in the last 10 seconds.", 10, "tenths", 10, 28, -124)
+  radio("Tenths under 3 s", "Tenths only in the last 3 seconds.", 3, "tenths", 10, 28, -146)
+  radio("No tenths", "Whole seconds only.", 0, "tenths", 10, 28, -168)
+
+  makeSection(pg, "Bars", -198, 24, COL)
+  radio("Drain", "The bar gets shorter as the time runs out.", "drain", "barFill", "drain", 28, -222)
+  radio("Fill", "The bar grows until the time runs out.", "fill", "barFill", "drain", 138, -222)
+  makeCheck(pg, "Spark at the bar's edge", "A bright spark where the bar ends, like on the cast bar.",
+    function() return db.spark == true end, function(v) db.spark = v end):SetPoint("TOPLEFT", 24, -246)
+  local scaleHelp = "Every bar uses the same scale, so the times can be compared. Longer times fill the whole bar."
+  radio("Own length", "Each bar is as long as its spell's duration.", 0, "barScale", 0, 28, -274)
+  radio("Same scale: 15 s", scaleHelp, 15, "barScale", 0, 28, -296)
+  radio("Same scale: 30 s", scaleHelp, 30, "barScale", 0, 28, -318)
+
+  makeSection(pg, "Timeline", -350, 24, COL)
+  local spanHelp = "How far ahead the Timeline style looks. Grid lines every 5 seconds."
+  radio("15 s", spanHelp, 15, "lineSpan", 20, 28, -374)
+  radio("20 s", spanHelp, 20, "lineSpan", 20, 88, -374)
+  radio("30 s", spanHelp, 30, "lineSpan", 20, 148, -374)
+end
+
 -- 0.20 page: Tracked spells. Which of your class's spells DotWatch tracks (a default list, changed
 -- by ticking), and the Devouring Plague jumps for priests. 0.20.2: every spell of the class is
 -- listed, the ones not learned yet in gray (they can be ticked or unticked ahead of time).
@@ -4231,7 +4442,7 @@ local function buildOptions()
   -- pages on the right, chosen in the list on the left
   local NAV_W = 160
   local pages = {}
-  for i = 1, 7 do -- 0.20: page 7 = Spells
+  for i = 1, 8 do -- 0.20: page 7 = Spells; 0.23: page 8 = Bars and time
     local pg = CreateFrame("Frame", nil, f)
     pg:SetPoint("TOPLEFT", NAV_W, 0)
     pg:SetPoint("BOTTOMRIGHT", 0, 50)
@@ -4314,6 +4525,7 @@ local function buildOptions()
     icons = "Like action-bar cooldowns: a dark sweep shows the time used, seconds on the icon.",
     table = "One line per enemy, one column per DoT. Best when you dot many mobs.",
     focus = "Your current target gets big icons, every other enemy one short line.",
+    timeline = "One lane per DoT on a shared time axis: now is on the left, the colored part runs to the DoT's end, dots are the ticks to come.",
   }
   for _, st in ipairs(STYLES) do
     makeRadio(dp, STYLE_NAMES[st], helps[st], st, function() return db.style or "bars" end,
@@ -4379,7 +4591,10 @@ local function buildOptions()
   local pv = { canvas = newCanvas(holder), box = box }
   pv.redraw = function()
     pv.list, pv.tg = buildSample()
-    local h, w = drawCanvas(pv.canvas, pv.list, pv.tg, db.style)
+    -- 0.23: the "Bars and time" page shows Bars when the chosen style has no bars
+    local style = db.style
+    if pv.barsOnly and not LOOK.BAR_STYLES[style or "bars"] then style = "bars" end
+    local h, w = drawCanvas(pv.canvas, pv.list, pv.tg, style)
     -- fit the sample into the box: shrink when too big, grow a little when small, and
     -- center it (0.14.1: Table and Target big only used the top of the box)
     local availW, availH = (box:GetWidth() or 240) - 24, (box:GetHeight() or 320) - 24
@@ -4417,6 +4632,10 @@ local function buildOptions()
   ---------------- page 7: Tracked spells (0.20), listed after Timers ----------------
   LOOK.buildSpellsPage(pages[7])
 
+  ---------------- page 8: Bars and time (0.23), listed after Look ----------------
+  LOOK.buildBarsPage(pages[8], 232)
+  makeSection(pages[8], "Preview", -54, 248)
+
   ---------------- navigation list on the left ----------------
   local navBg = CreateFrame("Frame", nil, f, BACKDROP_TEMPLATE)
   navBg:SetPoint("TOPLEFT", 16, -50)
@@ -4437,8 +4656,9 @@ local function buildOptions()
       if k == i then it.label:SetTextColor(1, 1, 1) else it.label:SetTextColor(1, 0.82, 0) end
     end
     f.page = i
-    if i == 2 or i == 3 then
-      -- one preview, shown on the Display and the Look page
+    pv.barsOnly = i == 8
+    if i == 2 or i == 3 or i == 8 then
+      -- one preview, shown on the Display, the Look and the Bars and time page
       box:SetParent(pages[i])
       box:ClearAllPoints()
       box:SetPoint("TOPLEFT", pages[i], "TOPLEFT", 248, -76)
@@ -4447,7 +4667,7 @@ local function buildOptions()
       pv.redraw()
     end
   end
-  local NAV = { { 1, "General" }, { 2, "Display" }, { 3, "Look" }, { 4, "Timers" }, { 7, "Tracked spells" },
+  local NAV = { { 1, "General" }, { 2, "Display" }, { 3, "Look" }, { 8, "Bars and time" }, { 4, "Timers" }, { 7, "Tracked spells" },
     { 5, "Enemies" }, { 6, "Statistics" } }
   for pos, entry in ipairs(NAV) do
     local i, label = entry[1], entry[2]
