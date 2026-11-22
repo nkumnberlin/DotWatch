@@ -1,5 +1,4 @@
--- DotProbe 0.6: diagnostic addon for WoW Forever.
--- 0.6: targeting / re-dotting tests live in Targeting.lua (/dp help, DotProbe/TEST-0.6.md).
+-- DotProbe 0.4: diagnostic addon for WoW Forever.
 -- No gameplay function. It only logs which data addons can read in combat
 -- (or whether it is "secret"), so the real DoT tracker can be built on facts.
 --
@@ -12,9 +11,7 @@
 --
 -- Commands: /dp help
 
-local ADDON_NAME, ns = ...
-local VERSION = "0.6"
-ns.cmd = {} -- extra /dp commands from other files (Targeting.lua)
+local ADDON_NAME = ...
 local MAX_LINES = 40000
 local LAND_WINDOW = 0.5   -- seconds after SUCCEEDED to wait for the aura event
 
@@ -384,7 +381,7 @@ end
 ---------------------------------------------------------------------------
 local function header()
   local h = {}
-  h[#h + 1] = "DotProbe version " .. VERSION
+  h[#h + 1] = "DotProbe version 0.2"
   h[#h + 1] = "build: " .. try(GetBuildInfo)
   h[#h + 1] = "issecretvalue API: " .. (issecretvalue and "present" or "MISSING")
   h[#h + 1] = "C_CombatLog.IsCombatLogRestricted: " ..
@@ -441,10 +438,7 @@ f:SetScript("OnEvent", function(self, event, ...)
       db = DotProbeDB
       db.log = db.log or {}
       if db.echo == nil then db.echo = false end
-      say(VERSION .. " loaded. /dp help for commands. Log: " .. #db.log .. " lines.")
-      if db.softOrig ~= nil then
-        say("|cffffaa00Action targeting (SoftTargetEnemy) is still changed from a test. /dp soft off restores it.|r")
-      end
+      say("0.4.1 loaded. /dp help for commands. Log: " .. #db.log .. " lines.")
       if db.npOrig then
         say("|cffffaa00Nameplate CVars are still changed from a hide test. /dp show restores them.|r")
       end
@@ -941,9 +935,6 @@ local function npCommand(rest)
   say("Nameplate test on. Fight a bit, switch targets, then /dp stop and /reload.")
 end
 
--- shared with Targeting.lua (loaded after this file)
-ns.log, ns.say, ns.fmt, ns.plain, ns.issecret, ns.nonEmpty, ns.HELP = log, say, fmt, plain, issecret, nonEmpty, HELP
-
 SLASH_DOTPROBE1 = "/dp"
 SLASH_DOTPROBE2 = "/dotprobe"
 SlashCmdList.DOTPROBE = function(msg)
@@ -1016,8 +1007,6 @@ SlashCmdList.DOTPROBE = function(msg)
     say(string.format("recording=%s lines=%d/%d echo=%s auras=%s plateHide=%s", tostring(state.recording),
       #db.log, MAX_LINES, tostring(db.echo), tostring(state.auras),
       (db.npOrig and "cvar " or "") .. (state.hideFrames and "frame" or "")))
-  elseif ns.cmd[cmd] then
-    ns.cmd[cmd](rest)
   else
     for _, l in ipairs(HELP) do say(l) end
   end
