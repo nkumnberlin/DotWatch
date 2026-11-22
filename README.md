@@ -34,12 +34,11 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Traps**: the timer starts on the enemy that sets the trap off, not when you place it.
 - **Enemies stay until they die**: a living enemy keeps its row and health, even with no DoTs on it, and its name blinks softly red while one of your DoTs is missing. In the open world a row goes away as soon as the enemy's nameplate disappears dead. No blink while you keep it out of the fight on purpose (Banish, Polymorph, Sap, Mind Soothe, Shackle, …). Fear still blinks.
 - **Dungeons**: Forever hides enemy names and IDs there, so DotWatch tells enemies apart by their nameplates, and (0.20.4) by your target, focus, your pet's and your party's targets and the boss frames. Keep enemy nameplates on: DotWatch says so once in a dungeon when they are off. Options › General › "Game nameplates" can switch them on for you ("Always show enemy plates") and show them as far away as the game allows ("Max plate range", 60 yards); both are off by default, change only out of combat and give back your old setting when unticked.
-- **Resist and immune detection**: a resisted DoT starts no timer and shows a red "Resisted" or "Immune" line. A resisted refresh keeps the old timer running.
+- **Resist and immune detection**: a resisted DoT starts no timer and shows a red "Resisted" or "Immune" line. A resisted refresh keeps the old timer running. Since 0.21 the enemy's block in the list also flashes twice (red, purple when immune), for crowd control too; Options › Timers › "Flash on resist" switches it to the whole window or off.
 - **Same-named enemies**: three "Slave Workers" become A, B and C, in the list and as a letter on their nameplates (left of the health bar, or above the plate).
 - **Enemy health** next to each name as percent, as a bar, or both, from green to yellow to red.
 - **Nameplate status** (Enemies page, with a live preview of two nameplates): show missing DoTs right on the enemy's plate by coloring its letter, a red frame, a missing count, or **mini bars** for each DoT. The mini bars can be made taller or thinner, moved up or down (also above the plate, or below the enemy's cast bar), get the DoT's icon before or after them (grayed out while missing) and tick marks.
 - **Crowd-control warning**: your crowd control blinks and turns red in its last seconds (2–10 s, default 5).
-- **Kill skull** next to each enemy's health: bright when the damage your running DoTs still deal (from their tooltips) will finish it, dim when not, so you know whether to refresh or keep casting. Option on the Timers page.
 - **Five display styles**: bars, slim bars, icons with timers, table (one column per DoT, curse and crowd-control spell), and target big with others small, with a live preview in the options.
 - **Move mode**: while the window is unlocked it has a purple background, a gold frame and a tab with a **Lock** button. Drag it into place, click Lock, and the list only shows up while timers run.
 - **Refresh warning**: DoTs pulse in their last seconds, with an optional sound (ten game sounds, from a soft click to the raid warning horn).
@@ -57,7 +56,7 @@ New features that rely on a guess ship switched off and marked "experimental", s
 
 ## Languages
 
-| Language | Spells recognized | Tooltips read (durations, kill skull) | Interface |
+| Language | Spells recognized | Tooltips read (durations) | Interface |
 |---|---|---|---|
 | English | yes | yes | yes |
 | German (deDE) | yes | yes (Classic Era wording, not yet checked on Forever) | yes |
@@ -108,7 +107,7 @@ Then start the game or type `/reload`.
 - **Dungeons**: names and GUIDs are secret there, but `UnitIsUnit` and nameplate tokens stay readable, so an enemy is known by its nameplate from the moment it appears until it disappears. Since 0.20.4 a key also sticks to "anchor" tokens (target, focus, pet and party targets, boss frames), so an enemy keeps its timers across target switches, plates that flicker away and casts from outside nameplate range. A cast with a hidden name goes to the first hostile unit of target, mouseover, focus, target of target. The game draws the hidden name for us.
 - **Resists**: when a DoT fails, the game sends `UNIT_COMBAT` with MISS, RESIST or IMMUNE on that enemy in the same frame as the successful cast. If no aura change arrives in that frame, the timer is cancelled.
 - **Out of combat** the real debuffs are readable, so DotWatch corrects its timers and learns the exact DoT durations (not crowd control: diminishing returns would shorten them).
-- **Health and kill skull**: Forever keeps enemy health secret from addons, so DotWatch never compares it in Lua. Health goes straight into game-drawn bars. For the skull, a hidden status bar gets the enemy's health as its range and the damage your running DoTs still deal (read from their tooltips, refreshed on every cast) as its value. The bright skull only slides into view when the damage reaches the health, so the game does the comparison. The idea comes from DoesItDie and Smooth Animated Bars (MIT).
+- **Health**: Forever keeps enemy health secret from addons, so DotWatch never compares it in Lua. Health goes straight into game-drawn bars. (The kill skull of 0.15–0.20, which let the game compare health with the damage your DoTs still deal, was removed in 0.21.)
 - **Devouring Plague jumps** (experimental): the game doesn't say where a plague jumps. DotWatch takes the enemies whose auras changed right around the death as candidates and waits for a shadow tick on them to confirm.
 - **Languages**: every spell has its spell ID; the game names it in its own language, and that name is matched against casts, the spellbook and auras. Saved settings (colors, statistics, immunities, tracked spells) stay keyed by the English name, so they survive a language change.
 - **Banished enemies** are immune to everything; an "Immune" there is not stored as an immunity of that enemy type.
@@ -123,9 +122,8 @@ Then start the game or type `/reload`.
 - Freezing Trap starts on the first new debuff an enemy gets after the trap was placed; another player's debuff at that moment can set it off in DotWatch.
 - Devouring Plague jumps are a guess until the first shadow tick confirms them; another player's debuff or shadow damage at that moment can mislead it.
 - Classes other than Warlock and Priest are not much tested in game yet.
-- The kill skull counts only your own DoTs, from their tooltip numbers: crits, partial resists, other players and your pet aren't counted. It needs the enemy as target or with a nameplate.
 - Tick marks on the nameplate mini bars are skipped when the game keeps the plate's width secret.
-- On German clients the tooltip wording (kill skull damage, DoT durations) is from Classic Era and not yet checked on Forever. Crowd-control durations on non-English clients come from DotWatch's duration table.
+- On German clients the tooltip wording (DoT durations) is from Classic Era and not yet checked on Forever. Crowd-control durations on non-English clients come from DotWatch's duration table.
 - Russian and Chinese interface texts need a game client whose font has those letters.
 
 ## Feedback

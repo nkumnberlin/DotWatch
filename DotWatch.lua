@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.21: the kill skull and its tooltip damage math are gone. A resisted or immune DoT or
+-- crowd control makes the enemy's block (or the whole list) flash (Timers > Resists).
 -- New in 0.18.1: review fixes. The language stays fixed until /reload (no mixed texts after
 -- a click), /dw lang <auto|en|de|ru|zhCN|zhTW>, long spell names shortened in any language,
 -- spells without a name from their ID are reported (/dw spells), corrected translations.
@@ -52,7 +54,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.20.4"
+local VERSION = "0.21"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -288,49 +290,25 @@ local function parseDuration(desc)
   return nil
 end
 
--- 0.15: what a DoT deals in total, from its tooltip. The idea (and how Forever's tooltips
--- read) comes from DoesItDie by Joe Greive (MIT), as ported in Smooth Animated Bars:
---   "... 822 Shadow damage over 18 sec."           -> 822 (the last such clause, so Immolate's
---   "279 Fire damage and then an additional 510 Fire damage over 15 sec" gives 510)
---   "Transfers 15 health ... every 3 sec. Lasts 30 sec."  -> 15 * 10 (Siphon Life)
--- Damage numbers in combat (UNIT_COMBAT) are secret on Forever, so ticks can't be measured:
--- the tooltip numbers are all there is.
-local KILL = {} -- 0.15: kill skull (one local: the main chunk is at Lua's 200-local limit)
-KILL.ns = select(2, ...) -- 0.16: the addon's shared table (Locale*.lua put their readers in it)
-function KILL.parseDamage(desc)
-  if type(desc) ~= "string" then return nil end
-  desc = desc:gsub("\194\160", " ")
-  desc = desc:gsub("\226\128\175", " ")
-  desc = desc:gsub("(%d),(%d%d%d)", "%1%2")
-  if desc:find("^Heals") then return nil end
-  local total
-  for amount in desc:gmatch("(%d+)[%a ]-damage over %d+%.?%d* sec") do total = tonumber(amount) end
-  if total and total > 0 then return total end
-  local amount, every = desc:match("(%d+)[%a ]-damage every (%d+%.?%d*) sec")
-  if not amount then amount, every = desc:match("Transfers (%d+) health.-every (%d+%.?%d*) sec") end
-  local lasts = desc:match("[Ll]asts (%d+%.?%d*) sec")
-  amount, every, lasts = tonumber(amount), tonumber(every), tonumber(lasts)
-  if amount and every and lasts and every > 0 then
-    return amount * math.floor(lasts / every + 0.5)
-  end
-  return nil
-end
+-- 0.21: the kill skull (0.15) and its damage math are gone; CORE keeps what it shared:
+-- the addon's table (languages) and the tooltip duration reader.
+local CORE = {} -- one local: the main chunk is at Lua's 200-local limit
+CORE.ns = select(2, ...) -- 0.16: the addon's shared table (Locale*.lua put their readers in it)
 
--- 0.16: duration and total damage from a tooltip in any client language: the English
--- patterns first, then Locale*.lua (German, Russian, Simplified/Traditional Chinese). Only
--- DoTs (def.tick) get a damage number; crowd control keeps its English-only duration
--- (other languages fall back to the duration table, which holds Forever's values).
-function KILL.readDesc(desc, def)
+-- 0.16: duration from a tooltip in any client language: the English patterns first, then
+-- Locale*.lua (German, Russian, Simplified/Traditional Chinese) for DoTs. Crowd control keeps
+-- its English-only duration (other languages fall back to the duration table, which holds
+-- Forever's values). The Locale readers come from DoesItDie / Smooth Animated Bars (MIT).
+function CORE.readDuration(desc, def)
   local dur = parseDuration(desc)
-  local dmg = def.tick and KILL.parseDamage(desc) or nil
-  if def.tick and (not dur or not dmg) and type(desc) == "string" then
-    local loc = KILL.ns and KILL.ns.locale
-    local total, _, ldur = nil, nil, nil
-    if loc and loc.parseDot then total, _, ldur = loc.parseDot(desc, 1) end
-    dur = dur or ldur
-    dmg = dmg or total
+  if def.tick and not dur and type(desc) == "string" then
+    local loc = CORE.ns and CORE.ns.locale
+    if loc and loc.parseDot then
+      local _, _, ldur = loc.parseDot(desc, 1)
+      dur = ldur
+    end
   end
-  return dur, dmg
+  return dur
 end
 
 local function iconOf(id)
@@ -355,9 +333,9 @@ local function spellInfo(id)
   if def.cc and db and db.trackCC == false then return nil end
   if not TRACK.on(def) then return nil end -- 0.20: unticked on the Spells page (not cached)
   local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
-  local descDur, dmg = KILL.readDesc(desc, def)
+  local descDur = CORE.readDuration(desc, def)
   local info = { id = id, name = def.name, shown = name, def = def, group = def.group, slot = def.slot, color = def.color,
-    icon = iconOf(id), descDur = descDur, dmg = dmg }
+    icon = iconOf(id), descDur = descDur }
   spellCache[id] = info
   return info
 end
@@ -536,36 +514,6 @@ end
 local function addFlash(m, text, r, g, b)
   m.flash[#m.flash + 1] = { text = text, r = r, g = g, b = b, expires = now() + 2.5 }
   dirty = true
-end
-
--- 0.15: damage your DoTs on this enemy still have to deal (tooltip numbers, ticks still to
--- come). Bane/Curse of Agony is back-loaded on Forever: ticks 0.5x for the first third,
--- 1x, then 1.5x (observed by DoesItDie). Lost DoTs count nothing, so the guess errs low.
-KILL.AGONY = { 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1.5, 1.5, 1.5, 1.5 }
-KILL.SHAPES = { ["Bane of Agony"] = KILL.AGONY, ["Curse of Agony"] = KILL.AGONY }
-function KILL.dotLeft(d, t)
-  local iv = d.info.def.tick
-  if not d.dmg or not iv or d.lost then return 0 end
-  local total = math.floor((d.expires - d.start) / iv + 0.5)
-  if total < 1 then return 0 end
-  local done = math.max(0, math.floor((t - d.start) / iv + 0.05)) -- tick k lands at start + k * iv
-  if done >= total then return 0 end
-  local per = d.dmg / total
-  local shape = KILL.SHAPES[d.info.name]
-  if not shape then return per * (total - done) end
-  local sum = 0
-  for k = done + 1, total do
-    local i = math.max(1, math.min(#shape, math.ceil(k / total * #shape)))
-    sum = sum + per * shape[i]
-  end
-  return sum
-end
-function KILL.damageLeft(m, t)
-  local sum = 0
-  for _, d in pairs(m.dots) do
-    if d.expires > t then sum = sum + KILL.dotLeft(d, t) end
-  end
-  return sum
 end
 
 -- 0.14.1: is one of our "calm" / "invuln" control spells running on this enemy?
@@ -761,6 +709,7 @@ local function failDot(m, d, action)
   local label = L[FAIL[action] or action]
   if banished then label = label .. " (" .. LOOK.spell(banished.info) .. ")" end
   addFlash(m, LOOK.spell(d.info) .. ": " .. label, 1, 0.3, 0.3)
+  m.flashAt, m.flashKind = now(), action == "IMMUNE" and "immune" or "resist" -- 0.21: frame flash
   if banished then
     -- nothing recorded
   elseif action == "IMMUNE" then
@@ -811,13 +760,7 @@ local function startDot(info, guid, name, t, how, jump, durOverride)
   end
   local prev = m.dots[info.id]
   local dur = durOverride or durationOf(info) -- 0.20.1: a jumped plague keeps what was left
-  -- 0.15: the tooltip again, so new gear or a new rank counts (it may be unreadable in combat:
-  -- then the number read earlier stays)
-  if info.def.tick and C_Spell and C_Spell.GetSpellDescription then
-    local _, fresh = KILL.readDesc(str(plain(C_Spell.GetSpellDescription, info.id)), info.def)
-    if fresh then info.dmg = fresh end
-  end
-  local d = { info = info, start = t, expires = t + dur, prev = prev, dmg = info.dmg,
+  local d = { info = info, start = t, expires = t + dur, prev = prev,
     confirmed = prev and prev.confirmed or false }
   if info.group then
     for id, other in pairs(m.dots) do
@@ -1572,37 +1515,6 @@ local function getHeader(cv, i)
   return h
 end
 
--- 0.15: "do my DoTs kill it?" Health is secret on Forever, so Lua never compares it. A
--- hidden StatusBar KILL.LONG px wide gets the enemy's health as its range and the damage
--- left as its value; the skull rides the right edge of its (invisible) fill, inside a
--- skull-sized window at the bar's right end. It slides into that window only when the
--- damage reaches the health: the game does the comparison. (Idea: DoesItDie / Smooth
--- Animated Bars.) Behind it a dim gray skull: "your DoTs alone won't finish it".
-KILL.LONG = 10000
-KILL.SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
-function KILL.get(cv, h)
-  if h.kill then return h.kill end
-  local k = CreateFrame("Frame", nil, cv.frame)
-  k:SetClipsChildren(true)
-  k.dim = k:CreateTexture(nil, "ARTWORK")
-  k.dim:SetAllPoints()
-  k.dim:SetTexture(KILL.SKULL)
-  k.dim:SetDesaturated(true)
-  k.dim:SetAlpha(0.3)
-  k.bar = CreateFrame("StatusBar", nil, k)
-  k.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-  k.bar:SetStatusBarColor(0, 0, 0, 0)
-  k.bar:SetPoint("RIGHT", k, "RIGHT", 0, 0)
-  k.bar:SetMinMaxValues(0, 1)
-  k.bar:SetValue(0)
-  k.icon = k.bar:CreateTexture(nil, "OVERLAY")
-  k.icon:SetTexture(KILL.SKULL)
-  k.icon:SetPoint("RIGHT", k.bar:GetStatusBarTexture(), "RIGHT", 0, 0)
-  k:Hide()
-  h.kill = k
-  return k
-end
-
 -- 0.19: health bar under the name (option "Health shown as": Percent / Bar / Bar + percent).
 -- Health is secret on Forever: the bar gets health and max health as they are, the game fills it.
 function LOOK.hpBarGet(cv, h)
@@ -1627,23 +1539,86 @@ function LOOK.hpMode()
   return db.hpMode or "pct"
 end
 
--- feed one header's skull (every 0.2 s for the real list, once for the preview)
-function KILL.set(h, t)
-  local k, m = h.kill, h.mob
-  if not k then return end
-  if not m or not h:IsShown() or db.killIcon == false then k:Hide() return end
-  if m.fakeHP then -- options preview: plain numbers
-    k.bar:SetMinMaxValues(0, 100)
-    k.bar:SetValue(m.fakeKill and 100 or 0)
-    k:Show()
-    return
+-- 0.21: resist flash. A resisted / immune DoT or crowd control makes the frame flash twice:
+-- the enemy's block in the list (header to the next header) or the whole list. Sizes are our
+-- own layout numbers, nothing is read from widgets (secret names make widths secret).
+LOOK.FLASH_TIME = 0.9
+LOOK.FLASH_COLORS = { resist = { 1, 0.18, 0.12 }, immune = { 0.72, 0.4, 1 } }
+function LOOK.glowGet(canvas, key)
+  canvas.glows = canvas.glows or {}
+  local g = canvas.glows[key]
+  if g then return g end
+  g = CreateFrame("Frame", nil, canvas.frame)
+  g:SetFrameLevel(canvas.frame:GetFrameLevel() + 20)
+  g.fill = g:CreateTexture(nil, "OVERLAY")
+  g.fill:SetAllPoints()
+  g.fill:SetBlendMode("ADD")
+  g.edges = {}
+  for i = 1, 4 do g.edges[i] = g:CreateTexture(nil, "OVERLAY") end
+  local e = g.edges
+  e[1]:SetPoint("TOPLEFT") e[1]:SetPoint("TOPRIGHT") e[1]:SetHeight(2)
+  e[2]:SetPoint("BOTTOMLEFT") e[2]:SetPoint("BOTTOMRIGHT") e[2]:SetHeight(2)
+  e[3]:SetPoint("TOPLEFT") e[3]:SetPoint("BOTTOMLEFT") e[3]:SetWidth(2)
+  e[4]:SetPoint("TOPRIGHT") e[4]:SetPoint("BOTTOMRIGHT") e[4]:SetWidth(2)
+  g:Hide()
+  canvas.glows[key] = g
+  return g
+end
+-- after a draw: one glow per enemy block (count headers, list height, list width); nil hides all
+function LOOK.placeGlows(canvas, count, height, width)
+  for _, g in pairs(canvas.glows or {}) do g:Hide() g.mob = nil end
+  canvas.glowN = count or 0
+  if not count or count == 0 then return end
+  for i = 1, count do
+    local h, nxt = canvas.headers[i], canvas.headers[i + 1]
+    local top = h.top or 0
+    local bottom = (i < count and nxt and nxt.top and nxt.top - 2) or height
+    local g = LOOK.glowGet(canvas, i)
+    g.mob = h.mob
+    g:ClearAllPoints()
+    g:SetPoint("TOPLEFT", canvas.frame, "TOPLEFT", -3, -(top - 2))
+    g:SetSize(width + 6, math.max(8, bottom - top + 3))
   end
-  local left = KILL.damageLeft(m, t)
-  if left <= 0 or not m.unit then k:Hide() return end
-  local ok = pcall(function() k.bar:SetMinMaxValues(0, UnitHealth(m.unit)) end)
-  if not ok then k:Hide() return end
-  k.bar:SetValue(left)
-  k:Show()
+  local w = LOOK.glowGet(canvas, "window")
+  w:ClearAllPoints()
+  w:SetPoint("TOPLEFT", canvas.frame, "TOPLEFT", -5, 5)
+  w:SetSize(width + 10, height + 10)
+end
+-- how strong an enemy flashes now: two blinks that fade out; the options preview loops
+function LOOK.flashAlpha(m, t)
+  if not m then return 0 end
+  local age, kind = t - (m.flashAt or -100), m.flashKind
+  if m.fakeHP ~= nil then
+    if not m.fakeFlash then return 0 end
+    age, kind = t % 3, m.fakeFlash
+  end
+  if age < 0 or age >= LOOK.FLASH_TIME then return 0 end
+  local p = age / LOOK.FLASH_TIME
+  return (1 - p) * (0.5 + 0.5 * math.cos(p * 4 * math.pi)), kind
+end
+function LOOK.paintGlow(g, a, kind)
+  local c = LOOK.FLASH_COLORS[kind] or LOOK.FLASH_COLORS.resist
+  for _, e in ipairs(g.edges) do e:SetColorTexture(c[1], c[2], c[3], a) end
+  g.fill:SetColorTexture(c[1], c[2], c[3], 0.22 * a)
+  g:Show()
+end
+function LOOK.updateGlows(canvas, t)
+  if not canvas.glows then return end
+  local mode = db.flashMode or "enemy"
+  local best, bestKind = 0, nil
+  for i = 1, canvas.glowN or 0 do
+    local g = canvas.glows[i]
+    local a, kind = 0, nil
+    if g and mode ~= "off" then a, kind = LOOK.flashAlpha(g.mob, t) end
+    if a > best then best, bestKind = a, kind end
+    if g then
+      if mode == "enemy" and a > 0.01 then LOOK.paintGlow(g, a, kind) else g:Hide() end
+    end
+  end
+  local w = canvas.glows.window
+  if w then
+    if mode == "window" and best > 0.01 and (canvas.glowN or 0) > 0 then LOOK.paintGlow(w, best, bestKind) else w:Hide() end
+  end
 end
 
 local function getFlash(cv, i)
@@ -2198,16 +2173,7 @@ local function placeHeader(m, tg, x, y, big, barW)
     if p >= 0.5 then h.hp:SetTextColor((1 - p) * 2, 1, 0.15) else h.hp:SetTextColor(1, p * 2, 0.15) end
   end
   if m.fakeHP and barH > 0 then LOOK.hpBarSet(h, nil, m.fakeHP) end
-  -- 0.15: kill skull right after the HP % (anchored only, nothing read); after the name
-  -- when the number is not next to it
-  local k = KILL.get(cv, h)
-  local s = big and 16 or math.max(11, f.head - 3)
-  k:ClearAllPoints()
-  k:SetPoint("LEFT", mode == "pct" and h.hp or h, "RIGHT", 4, 0)
-  k:SetSize(s, s)
-  k.bar:SetSize(KILL.LONG, s)
-  k.icon:SetSize(s, s)
-  KILL.set(h, now())
+  h.top = y -- 0.21: where this enemy's block starts (own numbers, for the resist flash)
   return headH + (barH > 0 and barH + 1 or 0)
 end
 
@@ -2532,7 +2498,6 @@ end
 local function drawCanvas(canvas, list, tg, style)
   for _, h in ipairs(canvas.headers) do
     h:Hide() h.hp:Hide() h.mob = nil
-    if h.kill then h.kill:Hide() end
     if h.hpbar then h.hpbar:Hide() end
   end
   for _, pool in ipairs({ canvas.bars, canvas.slims, canvas.cells, canvas.minis, canvas.tcells }) do
@@ -2544,11 +2509,13 @@ local function drawCanvas(canvas, list, tg, style)
   style = STYLE_NAMES[style] and style or "bars"
   ROW_H = LOOK.font().row
   local W = STYLE_WIDTH[style] + (ROW_H - 16) * 4
+  LOOK.placeGlows(canvas, nil, 0, 0)
   if #list == 0 then return 0, W end
   cv, curList = canvas, list
   canvas.W = W -- 0.19: width for the health bars under the names
   n = { h = 0, b = 0, s = 0, c = 0, m = 0, t = 0, f = 0, x = 0, l = 0 }
   local h, w = render[style](list, tg, W)
+  LOOK.placeGlows(canvas, n.h, h, w or W)
   return h, w or W
 end
 
@@ -2634,6 +2601,7 @@ function LOOK.slotRows(m, t)
 end
 
 local function updateCanvas(canvas, t)
+  LOOK.updateGlows(canvas, t) -- 0.21: resist flash
   -- soft red blink on the name of an enemy that misses DoTs
   local blink = db.missingBlink ~= false and (0.5 + 0.5 * math.sin(t * 4))
   for _, h in ipairs(canvas.headers) do
@@ -2888,7 +2856,6 @@ function LOOK.hpBarSet(h, unit, fake)
 end
 
 local function updateHP()
-  local t = now()
   local mode = LOOK.hpMode()
   for _, h in ipairs(main.headers) do
     local m = h.mob
@@ -2900,7 +2867,6 @@ local function updateHP()
       end
       LOOK.hpBarSet(h, m.unit)
     end
-    KILL.set(h, t)
   end
 end
 
@@ -2975,8 +2941,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
     dbg("LOADED " .. VERSION)
     -- 0.18: texts made while loading used the client language; the saved one is known now.
     -- 0.18.1: from here on the language stays fixed until /reload
-    local lang = KILL.ns.freezeLanguage()
-    if not KILL.ns.readable(lang) then
+    local lang = CORE.ns.freezeLanguage()
+    if not CORE.ns.readable(lang) then
       -- in English on purpose: this client's font may not show the chosen language
       say("Interface language " .. lang .. ". Can't read it? Type /dw lang auto, then /reload.")
     end
@@ -3103,6 +3069,7 @@ local function testBars()
     end
   end
   addFlash(mobs["Test-0-0-0-0-2-CCC"], LOOK.spell(s2) .. ": " .. L["Resisted"], 1, 0.3, 0.3)
+  mobs["Test-0-0-0-0-2-CCC"].flashAt, mobs["Test-0-0-0-0-2-CCC"].flashKind = t, "resist" -- 0.21
   say(L["Test timers shown. They run out on their own or end when you leave combat."])
 end
 
@@ -3328,7 +3295,7 @@ local function buildSample()
     mob("preview-B", "Slave Worker", 2, 45, 2, { { s1, len(s1) * 0.23, len(s1) }, { s3, len(s3) * 0.64, len(s3) }, { s2, 2.1, len(s2) } }),
     mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { s2, len(s2) * 0.58, len(s2) } }, LOOK.spell(s3) .. ": " .. L["Resisted"]),
   }
-  list[3].fakeKill = true -- 0.15: the preview shows one enemy your DoTs will finish
+  list[3].fakeFlash = "resist" -- 0.21: the preview's resisted enemy flashes every few seconds
   if known["Siphon Life"] and DEF_BY_NAME["Siphon Life"] then
     local id, d = dot("Siphon Life", 22, 30)
     list[1].dots[id] = d
@@ -3523,9 +3490,6 @@ local function buildTimersPage(pg)
   y = y - 22
   makeCheck(pg, "Tick marks on the bars", "A thin line for every damage tick still to come (Bars and Slim bars).",
     function() return db.ticks ~= false end, function(v) db.ticks = v end):SetPoint("TOPLEFT", 26, y)
-  makeCheck(pg, "Skull: my DoTs will kill it",
-    "Next to the health %: a bright skull when the damage your running DoTs still deal (from their tooltips) reaches the enemy's health, a dim one when it doesn't, so refresh or keep casting. Counts only your DoTs, not other players or your pet. Needs the enemy as target or with a nameplate.",
-    function() return db.killIcon ~= false end, function(v) db.killIcon = v dirty = true end):SetPoint("TOPLEFT", 250, y)
   y = y - 26
   makeCheck(pg, "Mark DoTs as \"lost?\" when their ticks stop", "If an enemy you can see takes no more ticks of a DoT's school, the DoT was probably removed.",
     function() return db.lostCheck ~= false end, function(v) db.lostCheck = v end):SetPoint("TOPLEFT", 26, y)
@@ -3549,6 +3513,18 @@ local function buildTimersPage(pg)
     function() return db.ccWarn ~= false end, function(v) db.ccWarn = v end):SetPoint("TOPLEFT", 26, y)
   makeSlider(pg, "Warn when less than", 2, 10, 1, "%d s",
     function() return db.ccWarnTime or 5 end, function(v) db.ccWarnTime = v end):SetPoint("TOPLEFT", 254, y - 14)
+  y = y - 36
+
+  -- 0.21: a resisted / immune DoT or crowd control makes the frame flash (no screen flash)
+  makeSection(pg, "Resists", y)
+  y = y - 22
+  radioRow(pg, "Flash on resist", 30, y, {
+    { "enemy", "This enemy", "The enemy's block in the list flashes red (purple when it is immune)." },
+    { "window", "Whole window", "The whole list flashes." },
+    { "off", "Off", "No flash. The red line under the enemy stays." },
+  }, function() return db.flashMode or "enemy" end, function(v) db.flashMode = v end)
+  y = y - 24
+  makeButton(pg, "Test", 60, function() testBars() end):SetPoint("TOPLEFT", 30, y)
 end
 
 -- 0.20 page: Tracked spells. Which of your class's spells DotWatch tracks (a default list, changed
@@ -3906,11 +3882,11 @@ end
 -- /reload; until then everything stays in the language DotWatch was loaded with.
 function LOOK.setLanguage(tag)
   local label = tag
-  for _, l in ipairs(KILL.ns.LANGUAGES) do if l.tag == tag then label = L[l.label] end end
+  for _, l in ipairs(CORE.ns.LANGUAGES) do if l.tag == tag then label = L[l.label] end end
   db.lang = tag
   if LOOK.langBtn then LOOK.langBtn:SetText(label) end
   say(string.format(L["Language: %s. Type /reload to use it."], label))
-  if not KILL.ns.readable(tag) then say(L["If the texts can't be read after /reload: /dw lang auto"]) end
+  if not CORE.ns.readable(tag) then say(L["If the texts can't be read after /reload: /dw lang auto"]) end
 end
 
 -- 0.18: translated checkbox labels can be longer than the column. A label with another
@@ -4049,7 +4025,7 @@ local function buildOptions()
   makeCheck(g, "Minimap button", "Show the eye at the minimap. /dw opens this window either way.",
     function() return not db.minimap.hide end, function(v) db.minimap.hide = not v applySettings() end):SetPoint("TOPLEFT", 26, y)
   -- 0.18: interface language (Strings*.lua); a click goes to the next one, /reload applies it
-  local langs = KILL.ns.LANGUAGES
+  local langs = CORE.ns.LANGUAGES
   local langLabel = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   langLabel:SetPoint("TOPLEFT", 254, y - 6)
   langLabel:SetText(L["Language:"])
@@ -4400,6 +4376,7 @@ initSettings = function()
   if db.showHP == nil then db.showHP = true end
   db.scale = db.scale or 1
   db.style = db.style or "bars"
+  db.killIcon = nil -- 0.21: the kill skull is gone
   -- 0.9: the target bar is gone (clicking can only ever reach the current target in Forever)
   for _, k in ipairs({ "targetBar", "tbAction", "tbLabel", "tbSize", "tbDockX", "tbDockY", "tbPos" }) do db[k] = nil end
   db.stats = db.stats or {}
@@ -4496,11 +4473,11 @@ SlashCmdList.DOTWATCH = function(msg)
   elseif cmd == "lang" or cmd == "language" then
     -- 0.18.1: also the way back when a chosen language can't be read (/dw lang auto)
     local word = (msg or ""):match("^%S+%s+(%S+)")
-    local tag = KILL.ns.findLanguage(word)
+    local tag = CORE.ns.findLanguage(word)
     if tag then
       LOOK.setLanguage(tag)
     else
-      say(string.format(L["Language now: %s. Choose: /dw lang auto, en, de, ru, zhCN, zhTW (then /reload)"], KILL.ns.active or KILL.ns.languageTag()))
+      say(string.format(L["Language now: %s. Choose: /dw lang auto, en, de, ru, zhCN, zhTW (then /reload)"], CORE.ns.active or CORE.ns.languageTag()))
     end
   else
     say(L["/dw - options window"])

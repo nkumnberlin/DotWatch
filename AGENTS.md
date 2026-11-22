@@ -14,7 +14,7 @@ Read this file first. If a local `wow-forever-knowledge-base.md` exists in the r
 4. **No combat log.** Registering `COMBAT_LOG_EVENT_UNFILTERED` triggers ADDON_ACTION_FORBIDDEN. Build on your own casts and on unit events.
 5. **Probe before you build.** When it's unclear what Forever allows, write a DotProbe test (logging addon + test plan), let Nico run it, read the SavedVariables log, then decide.
 6. **Wrap risky UI/API calls in `pcall`** (settings registration, reading plate fields, drawing). Cap repeated error logs.
-7. **Lua 5.1, max 200 locals per chunk.** `DotWatch.lua` is close to the limit: put new code into namespaced tables (`KILL`, `LOOK`, `TRACK` …) or new files, not new top-level locals.
+7. **Lua 5.1, max 200 locals per chunk.** `DotWatch.lua` is close to the limit: put new code into namespaced tables (`CORE`, `LOOK`, `TRACK` …) or new files, not new top-level locals.
 8. **Only Forever data for game facts** (spells, durations, talents). Retail/Midnight docs only for API comparison.
 9. **Release only what Nico tested in game and explicitly OK'd**, and only the newest approved version.
 10. **Before deleting anything:** list exactly which files/folders would go and wait for Nico's OK.
@@ -81,7 +81,7 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 - Enemy nameplates off (client default, V key) = dungeon tracking only via anchors; DotWatch says so once per session in an instance. Options › General › "Game nameplates" sets `nameplateShowEnemies` = 1 and `nameplateMaxDistance` = 60 (off by default, out of combat only, queued until PLAYER_REGEN_ENABLED, old value restored on untick if unchanged since; `CVAR` debug lines).
 - Draw the secret name with `fs:SetText(UnitName(unit))`; anchor the next element to the name's right edge (never read its width).
 
-**Comparing secret values without reading them** (kill skull; idea from DoesItDie / Smooth Animated Bars, MIT)
+**Comparing secret values without reading them** (the kill skull used this from 0.15 until it was removed in 0.21; idea from DoesItDie / Smooth Animated Bars, MIT)
 - Hidden StatusBar: range = secret health, value = our plain remaining DoT damage (from tooltips). An icon rides the fill edge of a 10,000 px bar inside an icon-sized clip frame → visible only when damage ≥ health. The game does the comparison.
 - Health bars: feed `UnitHealth`/`UnitHealthMax` straight into a StatusBar.
 
@@ -106,7 +106,7 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 ### Proven impossible or not worth it (don't re-propose without new evidence)
 - Click a list row to target/cast on that mob (tested twice in DotProbe).
 - A target bar of secure buttons (only ever hits the current target; removed in 0.9).
-- An exact "HP left after DoTs" number (the kill skull is the allowed version).
+- An exact "HP left after DoTs" number (the kill skull was the allowed version; Nico dropped it in 0.21).
 - Tracking procs (poisons, Ignite, Deep Wounds) from casts; timers for channels.
 - Seeing CC breaks in combat (only a guess possible).
 
@@ -116,7 +116,7 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 
 - Files: `DotWatch.toc`, `DotWatch.lua` (main file, near the 200-locals limit), `Strings.lua` + `Strings_<lang>.lua` (UI text), `Locale.lua` + `Locale_<lang>.lua` (tooltip parsing), `.pkgmeta`, `.github/workflows/tag-release.yml`, `LICENSE`, `README.md`, `DotProbe/` (not packaged).
 - TOC load order: Strings → Locale → DotWatch.lua.
-- Namespaced feature tables: `LOOK` (forward-declared), `KILL`, `TRACK`, `SPELLS`, `CLASS_SLOTS`, `CLASS_SAMPLE`.
+- Namespaced feature tables: `CORE` (addon table `CORE.ns`, tooltip durations), `LOOK` (forward-declared, also the resist flash `LOOK.*Glow*`), `TRACK`, `SPELLS`, `CLASS_SLOTS`, `CLASS_SAMPLE`.
 - Spell entries: `id` (rank-1 Forever ID), English `name` as the **saved key**, `loc` = client name, `class`, flags (`cc`, `calm`, `invuln`, `track = false`, group names like `sting`/`poly`). `rebuildDefs()` builds `DEF_BY_NAME`/`SLOT_ORDER` for the player's class only.
 - Rendering through "canvases": the live window and the options preview share `drawCanvas`/`updateCanvas`; `drawCanvas` runs in `pcall`.
 - SavedVariables `DotWatchDB`: settings, `stats[npcID]`, `immune`, `track`, `untracked`, `debug` (last 600 lines) + `debugPrev`.
