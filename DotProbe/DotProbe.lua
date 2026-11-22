@@ -1,4 +1,5 @@
--- DotProbe 0.6: diagnostic addon for WoW Forever.
+-- DotProbe 0.7: diagnostic addon for WoW Forever.
+-- 0.7: range checks and Demonic Brand tests live in Probe07.lua (DotProbe/TEST-0.7.md).
 -- 0.6: targeting / re-dotting tests live in Targeting.lua (/dp help, DotProbe/TEST-0.6.md).
 -- No gameplay function. It only logs which data addons can read in combat
 -- (or whether it is "secret"), so the real DoT tracker can be built on facts.
@@ -13,7 +14,7 @@
 -- Commands: /dp help
 
 local ADDON_NAME, ns = ...
-local VERSION = "0.6"
+local VERSION = "0.7"
 ns.cmd = {} -- extra /dp commands from other files (Targeting.lua)
 local MAX_LINES = 40000
 local LAND_WINDOW = 0.5   -- seconds after SUCCEEDED to wait for the aura event

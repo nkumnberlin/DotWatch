@@ -1,8 +1,9 @@
 ## Interface: 16001
 ## Title: DotProbe (Forever API-Test)
 ## Notes: Diagnostic addon: logs which cast, aura, nameplate, combat and targeting data WoW Forever gives addons.
-## Version: 0.6
+## Version: 0.7
 ## SavedVariables: DotProbeDB
 
 DotProbe.lua
 Targeting.lua
+Probe07.lua
