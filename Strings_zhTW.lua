@@ -211,7 +211,7 @@ ns.STRINGS.zhTW = {
   ["Your current target gets big icons, every other enemy one short line."] = "當前目標使用大圖示，其他每個敵人一行簡短顯示。",
   ["General"] = "一般",
   ["Display"] = "顯示",
-  ["Bar look"] = "計時條外觀",
+  ["Fonts and colors"] = "字型與顏色",
   ["Timers"] = "計時器",
   ["Automatic (client language)"] = "自動（用戶端語言）",
   ["Crowd-control timers (%s ...)"] = "控制技能計時器（%s……）",
@@ -337,4 +337,13 @@ ns.STRINGS.zhTW = {
   ["Opens the Display page, where you pick the style."] = "打開顯示頁面，在那裡選擇樣式。",
   ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "此樣式沒有更多選項。計時條、細計時條和時間軸有各自的選項。",
   ["Style: %s"] = "樣式：%s",
+  -- 0.23: window background
+  ["Window background"] = "視窗背景",
+  ["Color"] = "顏色",
+  ["Opacity"] = "不透明度",
+  ["Click to pick the color behind the whole list. The opacity slider next to it sets how strong it is."] = "點擊選擇整個列表後面的顏色。旁邊的滑桿設定它的濃度。",
+  ["No background"] = "無背景",
+  ["The list has no background, only the bars (as before)."] = "列表沒有背景，只有計時條（和以前一樣）。",
+  ["Own color"] = "自訂顏色",
+  ["A background in your color behind the whole list. Pick the color and its opacity below."] = "在整個列表後面顯示你選擇顏色的背景。顏色和不透明度在下方設定。",
 }

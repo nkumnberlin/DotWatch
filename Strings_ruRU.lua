@@ -209,7 +209,7 @@ ns.STRINGS.ruRU = {
   ["Your current target gets big icons, every other enemy one short line."] = "Текущая цель получает крупные значки, остальные враги — по короткой строке.",
   ["General"] = "Общие",
   ["Display"] = "Отображение",
-  ["Bar look"] = "Вид полос",
+  ["Fonts and colors"] = "Шрифт и цвета",
   ["Timers"] = "Таймеры",
   ["Automatic (client language)"] = "Автоматически (язык клиента)",
   ["Crowd-control timers (%s ...)"] = "Таймеры контроля (%s …)",
@@ -335,4 +335,13 @@ ns.STRINGS.ruRU = {
   ["Opens the Display page, where you pick the style."] = "Открывает страницу «Отображение», где выбирается стиль.",
   ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "У этого стиля нет других настроек. Свои настройки есть у стилей «Полосы», «Тонкие полосы» и «Шкала времени».",
   ["Style: %s"] = "Стиль: %s",
+  -- 0.23: window background
+  ["Window background"] = "Фон окна",
+  ["Color"] = "Цвет",
+  ["Opacity"] = "Непрозрачность",
+  ["Click to pick the color behind the whole list. The opacity slider next to it sets how strong it is."] = "Нажмите, чтобы выбрать цвет за всем списком. Ползунок рядом задаёт его насыщенность.",
+  ["No background"] = "Без фона",
+  ["The list has no background, only the bars (as before)."] = "У списка нет фона, только полосы (как раньше).",
+  ["Own color"] = "Свой цвет",
+  ["A background in your color behind the whole list. Pick the color and its opacity below."] = "Фон вашего цвета за всем списком. Цвет и непрозрачность выбираются ниже.",
 }

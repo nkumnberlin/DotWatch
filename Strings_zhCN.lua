@@ -209,7 +209,7 @@ ns.STRINGS.zhCN = {
   ["Your current target gets big icons, every other enemy one short line."] = "当前目标使用大图标，其他每个敌人一行简短显示。",
   ["General"] = "常规",
   ["Display"] = "显示",
-  ["Bar look"] = "计时条外观",
+  ["Fonts and colors"] = "字体与颜色",
   ["Timers"] = "计时器",
   ["Automatic (client language)"] = "自动（客户端语言）",
   ["Crowd-control timers (%s ...)"] = "控制技能计时器（%s……）",
@@ -335,4 +335,13 @@ ns.STRINGS.zhCN = {
   ["Opens the Display page, where you pick the style."] = "打开显示页面，在那里选择样式。",
   ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "此样式没有更多选项。计时条、细计时条和时间轴有各自的选项。",
   ["Style: %s"] = "样式：%s",
+  -- 0.23: window background
+  ["Window background"] = "窗口背景",
+  ["Color"] = "颜色",
+  ["Opacity"] = "不透明度",
+  ["Click to pick the color behind the whole list. The opacity slider next to it sets how strong it is."] = "点击选择整个列表后面的颜色。旁边的滑块设置它的浓度。",
+  ["No background"] = "无背景",
+  ["The list has no background, only the bars (as before)."] = "列表没有背景，只有计时条（和以前一样）。",
+  ["Own color"] = "自定义颜色",
+  ["A background in your color behind the whole list. Pick the color and its opacity below."] = "在整个列表后面显示你选择颜色的背景。颜色和不透明度在下方设置。",
 }

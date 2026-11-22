@@ -208,7 +208,7 @@ ns.STRINGS.deDE = {
   ["Your current target gets big icons, every other enemy one short line."] = "Dein aktuelles Ziel bekommt große Symbole, jeder andere Gegner eine kurze Zeile.",
   ["General"] = "Allgemein",
   ["Display"] = "Anzeige",
-  ["Bar look"] = "Balken-Aussehen",
+  ["Fonts and colors"] = "Schrift und Farben",
   ["Timers"] = "Timer",
   ["Automatic (client language)"] = "Automatisch (Client-Sprache)",
   ["Crowd-control timers (%s ...)"] = "Kontroll-Timer (%s …)",
@@ -334,4 +334,13 @@ ns.STRINGS.deDE = {
   ["Opens the Display page, where you pick the style."] = "Öffnet die Seite Anzeige, dort wählst du den Stil.",
   ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "Dieser Stil hat keine weiteren Optionen. Balken, Schmale Balken und Zeitleiste haben eigene.",
   ["Style: %s"] = "Stil: %s",
+  -- 0.23: window background
+  ["Window background"] = "Fensterhintergrund",
+  ["Color"] = "Farbe",
+  ["Opacity"] = "Deckkraft",
+  ["Click to pick the color behind the whole list. The opacity slider next to it sets how strong it is."] = "Klicken, um die Farbe hinter der ganzen Liste zu wählen. Der Regler daneben legt fest, wie kräftig sie ist.",
+  ["No background"] = "Kein Hintergrund",
+  ["The list has no background, only the bars (as before)."] = "Die Liste hat keinen Hintergrund, nur die Balken (wie bisher).",
+  ["Own color"] = "Eigene Farbe",
+  ["A background in your color behind the whole list. Pick the color and its opacity below."] = "Ein Hintergrund in deiner Farbe hinter der ganzen Liste. Farbe und Deckkraft wählst du darunter.",
 }

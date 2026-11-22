@@ -1583,6 +1583,30 @@ end)
 local anchorBg = frame:CreateTexture(nil, "BACKGROUND")
 anchorBg:SetAllPoints()
 anchorBg:SetColorTexture(0.3, 0.1, 0.5, 0.5)
+
+-- 0.23: optional background behind the whole list, own color and opacity (Options › Display ›
+-- Fonts and colors). db.bgOn ~= true (default) = no background, as before; db.bgAlpha defaults to
+-- 60 %. A few pixels around the list; the frame size is our own number, nothing is read back.
+function LOOK.bgTexture(parent)
+  local tex = parent:CreateTexture(nil, "BACKGROUND", nil, -2)
+  tex:SetPoint("TOPLEFT", parent, "TOPLEFT", -4, 4)
+  tex:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 4, -4)
+  tex:Hide()
+  return tex
+end
+function LOOK.bgColor()
+  local c = db and type(db.bgColor) == "table" and db.bgColor or { 0, 0, 0 }
+  return c[1] or 0, c[2] or 0, c[3] or 0
+end
+function LOOK.bgAlpha() return db and tonumber(db.bgAlpha) or 0.6 end
+function LOOK.paintBg(tex)
+  local a = LOOK.bgAlpha()
+  if not (db and db.bgOn == true) or a <= 0 then tex:Hide() return end
+  local r, g, b = LOOK.bgColor()
+  tex:SetColorTexture(r, g, b, math.min(a, 1))
+  tex:Show()
+end
+LOOK.winBg = LOOK.bgTexture(frame)
 local anchorText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 anchorText:SetPoint("CENTER")
 anchorText:SetText(L["DotWatch (drag me)"])
@@ -3103,6 +3127,7 @@ local function layout()
   end
   local empty = #list == 0
   anchorBg:SetShown(not db.locked)
+  LOOK.paintBg(LOOK.winBg) -- 0.23
   anchorText:SetShown(not db.locked and empty)
   frame:EnableMouse(not db.locked)
   local newW, newH = math.max(w, db.locked and 160 or 180), math.max(h, ROW_H)
@@ -3741,7 +3766,8 @@ local function pickColor(r, g, b, onChange)
   pcall(cpf.SetFrameStrata, cpf, "FULLSCREEN_DIALOG")
 end
 
--- page: Look (font size, bar texture, colors per DoT); the preview sits on the right
+-- page: Fonts and colors (was Look: font size, bar texture, colors per DoT, 0.23 window background);
+-- the preview sits on the right
 local function buildLookPage(pg, COL)
   makeSection(pg, "Font size", -54, 24, COL)
   local rx = 28
@@ -3834,6 +3860,55 @@ local function buildLookPage(pg, COL)
     end
     noClass:SetShown(not any)
   end)
+  -- 0.23: window background, right column under the preview (the color list on the left can be long)
+  -- Nico: "No background" is its own choice (default), "Own color" turns on color + opacity
+  makeSection(pg, "Window background", -366, COL + 16)
+  makeRadio(pg, "No background", "The list has no background, only the bars (as before).", false,
+    function() return db.bgOn == true end, function(v) db.bgOn = v end):SetPoint("TOPLEFT", COL + 20, -390)
+  makeRadio(pg, "Own color", "A background in your color behind the whole list. Pick the color and its opacity below.", true,
+    function() return db.bgOn == true end, function(v) db.bgOn = v end):SetPoint("TOPLEFT", COL + 150, -390)
+  local bgBtn = CreateFrame("Button", nil, pg)
+  bgBtn:SetSize(90, 18)
+  bgBtn:SetPoint("TOPLEFT", COL + 20, -420)
+  bgBtn.sw = bgBtn:CreateTexture(nil, "ARTWORK")
+  bgBtn.sw:SetSize(14, 14)
+  bgBtn.sw:SetPoint("LEFT")
+  bgBtn.edge = bgBtn:CreateTexture(nil, "BACKGROUND")
+  bgBtn.edge:SetColorTexture(0.8, 0.7, 0.4, 1)
+  bgBtn.edge:SetPoint("TOPLEFT", bgBtn.sw, -1, 1)
+  bgBtn.edge:SetPoint("BOTTOMRIGHT", bgBtn.sw, 1, -1)
+  bgBtn.text = bgBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bgBtn.text:SetPoint("LEFT", bgBtn.sw, "RIGHT", 4, 0)
+  bgBtn.text:SetText(L["Color"])
+  bgBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+  local bgSlider
+  bgBtn.refresh = function() bgBtn.sw:SetColorTexture(LOOK.bgColor()) end
+  bgBtn:SetScript("OnClick", function()
+    local r, g, b = LOOK.bgColor()
+    pickColor(r, g, b, function(nr, ng, nb)
+      db.bgColor = { nr, ng, nb }
+      -- picking a color means you want a background: switch "Own color" on (and visible)
+      db.bgOn = true
+      if LOOK.bgAlpha() <= 0 then db.bgAlpha = 0.6 end
+      for _, c in ipairs(controls) do c.refresh() end
+      dirty = true
+    end)
+  end)
+  tip(bgBtn, "Window background", "Click to pick the color behind the whole list. The opacity slider next to it sets how strong it is.")
+  controls[#controls + 1] = bgBtn
+  bgSlider = makeSlider(pg, "Opacity", 5, 100, 5, function(v) return string.format("%d%%", v) end,
+    function() return math.floor(LOOK.bgAlpha() * 100 + 0.5) end, function(v) db.bgAlpha = v / 100 end)
+  bgSlider:SetWidth(130)
+  bgSlider:SetPoint("TOPLEFT", COL + 120, -421)
+  -- color and opacity only matter with "Own color": grayed out otherwise
+  local refreshSlider = bgSlider.refresh
+  bgSlider.refresh = function()
+    refreshSlider()
+    local on = db.bgOn == true
+    bgSlider:SetAlpha(on and 1 or 0.4)
+    bgBtn:SetAlpha(on and 1 or 0.4)
+  end
+
   local reset = makeButton(pg, "Default colors", 120, function()
     wipe(db.colors)
     for _, c in ipairs(controls) do c.refresh() end
@@ -4650,6 +4725,8 @@ local function buildOptions()
   pv.redraw = function()
     pv.list, pv.tg = buildSample()
     local h, w = drawCanvas(pv.canvas, pv.list, pv.tg, db.style)
+    pv.bg = pv.bg or LOOK.bgTexture(holder) -- 0.23: the window background in the preview
+    LOOK.paintBg(pv.bg)
     -- fit the sample into the box: shrink when too big, grow a little when small, and
     -- center it (0.14.1: Table and Target big only used the top of the box)
     local availW, availH = (box:GetWidth() or 240) - 24, (box:GetHeight() or 320) - 24
@@ -4717,13 +4794,13 @@ local function buildOptions()
       box:SetParent(pages[i])
       box:ClearAllPoints()
       box:SetPoint("TOPLEFT", pages[i], "TOPLEFT", 248, -76)
-      box:SetPoint("BOTTOMRIGHT", pages[i], "BOTTOMRIGHT", -22, 6)
+      box:SetPoint("BOTTOMRIGHT", pages[i], "BOTTOMRIGHT", -22, i == 3 and 116 or 6) -- 0.23: room for the background
       box:Show()
       pv.redraw()
     end
   end
-  -- 0.23: Style options and Bar look (was "Look") sit indented under Display
-  local NAV = { { 1, "General" }, { 2, "Display" }, { 8, "Style options", sub = true }, { 3, "Bar look", sub = true }, { 4, "Timers" },
+  -- 0.23: Style options and Fonts and colors (was "Look") sit indented under Display
+  local NAV = { { 1, "General" }, { 2, "Display" }, { 8, "Style options", sub = true }, { 3, "Fonts and colors", sub = true }, { 4, "Timers" },
     { 7, "Tracked spells" }, { 5, "Enemies" }, { 6, "Statistics" } }
   for pos, entry in ipairs(NAV) do
     local i, label = entry[1], entry[2]
