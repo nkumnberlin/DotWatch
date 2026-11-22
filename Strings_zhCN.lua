@@ -278,7 +278,6 @@ ns.STRINGS.zhCN = {
   ["Follow Devouring Plague jumps"] = "追踪噬灵瘟疫的跳跃",
   ["Devouring Contagion talent: when an enemy dies with your Devouring Plague on it, the plague jumps to 2 nearby enemies. DotWatch guesses which ones (they get a new debuff at that moment) and drops a guess when no shadow damage follows. A guess can be wrong in a group."] = "噬灵传染天赋：带有你的噬灵瘟疫的敌人死亡时，瘟疫会跳到附近2个敌人身上。DotWatch会猜测是哪两个（它们在那一刻获得新的减益），如果之后没有暗影伤害就放弃猜测。在队伍中可能猜错。",
   ["Talent: learned"] = "天赋：已学习",
-  ["%s (experimental)"] = "%s（实验性）",
   ["Count the pet's empowered attacks"] = "统计宠物的强化攻击",
   ["The talent: your Searing Pain brands the enemy for 10 sec and your pet's next 6 attacks on it deal extra damage. The 10 sec timer always runs. Ticked: a gold number after the time shows the attacks left. The game doesn't say which attack used a charge, so DotWatch guesses it (a pet hit and a debuff change at the same moment) and can be off."] = "天赋：你的灼热之痛会给敌人打上烙印，持续10秒，你的宠物对其接下来的6次攻击会造成额外伤害。10秒计时始终显示。勾选后：时间后面的金色数字显示剩余的攻击次数。游戏不会告诉插件是哪次攻击消耗了次数，所以DotWatch只能推测（宠物命中和减益效果变化在同一时刻），可能有误差。",
   ["Talent: not learned (no brand timer)"] = "天赋：未学习（没有烙印计时）",

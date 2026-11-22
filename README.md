@@ -44,7 +44,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Refresh warning**: DoTs pulse in their last seconds, with an optional sound (ten game sounds, from a soft click to the raid warning horn).
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop (not while the enemy is banished).
 - **Look options**: font size, bar texture, a color per DoT (for your class), window size, growth direction, fading out of combat.
-- **Demonic Brand** (Warlock, Demonology talent, 0.22): your Searing Pain starts a 10 s "Demonic Brand" timer on that enemy, shown while it runs, always as the enemy's first row (0.22.1). Only with the talent learned.
+- **Demonic Brand** (Warlock, Demonology talent, 0.22): your Searing Pain starts a 10 s "Demonic Brand" timer on that enemy, shown while it runs, always as the enemy's first row (0.22.1). A gold number after the time shows how many of the pet's 6 empowered attacks are left (0.22.2: on by default; Options › Tracked spells). Forever doesn't tell addons which attack used a charge, so DotWatch counts a charge when the branded enemy takes fire or shadow damage and its debuffs change in the same moment, but not on your own DoT ticks and casts. At 0 the timer ends. Only with the talent learned.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
 - **Languages**: English, German, Russian and Chinese (simplified and traditional) clients and interface, see [Languages](#languages).
 - **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch. Pages: General, Display, Look, Timers, Tracked spells, Enemies, Statistics.
@@ -54,7 +54,6 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 New features that rely on a guess ship switched off and marked "experimental", so testers can try them in a normal release while nothing changes for everyone else. Turn them on in the options; feedback decides whether they become a normal feature.
 
 - **Follow Devouring Plague jumps** (Priest, talent Devouring Contagion), Options › Tracked spells › "Devouring Plague jumps (experimental)": when an enemy dies with your Devouring Plague, up to two nearby enemies get an estimated plague (flash "jumped") with the time that was left on the dead enemy. The next shadow tick confirms it; without a tick within 6 s in view it is dropped. The page also shows whether DotWatch found the talent.
-- **Demonic Brand charges** (Warlock, 0.22), Options › Tracked spells › "Demonic Brand (experimental)": a gold number after the brand's time shows how many of the pet's 6 empowered attacks are left. Forever doesn't tell addons which attack used a charge, so DotWatch counts a charge when the branded enemy takes fire or shadow damage and its debuffs change in the same moment, but not on your own DoT ticks and casts. At 0 the timer ends.
 
 ## Languages
 

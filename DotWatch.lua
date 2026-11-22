@@ -18,6 +18,7 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.22.2: the Demonic Brand charge counter is on by default (Nico tested it), no longer experimental.
 -- New in 0.22.1: a running Demonic Brand is always the first row of its enemy (first column in Table).
 -- New in 0.22: Demonic Brand (warlock talent): Searing Pain starts a 10 s timer on that enemy;
 -- experimental: the pet attacks left (Tracked spells page), guessed from same-frame hits.
@@ -57,7 +58,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.22.1"
+local VERSION = "0.22.2"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -764,7 +765,7 @@ local function evaluate(m, d)
 end
 
 ---------------------------------------------------------------------------
--- 0.22: Demonic Brand charges (experimental, db.brandCharges == true). DotProbe 0.7: every
+-- 0.22: Demonic Brand charges (0.22.2: on by default, db.brandCharges ~= false). DotProbe 0.7: every
 -- empowered pet attack on the branded enemy comes as a fire/shadow UNIT_COMBAT hit and a
 -- UNIT_AURA "updated" on that enemy in the same frame (the Imp's Firebolt hits twice, 0.03 to
 -- 0.1 s apart: one update, one charge). Our own casts and DoT ticks can look the same, so a
@@ -772,7 +773,7 @@ end
 ---------------------------------------------------------------------------
 CORE.BRAND_CHARGES = 6 -- rank 3/3 ("next 6 attacks"); the rank spells' IDs are not known yet
 function CORE.brandTalent() return plain(IsPlayerSpell, 1293695) == true end
-function CORE.brandOn() return db and db.brandCharges == true end
+function CORE.brandOn() return db and db.brandCharges ~= false end
 
 -- the running brand on this enemy, if any
 function CORE.brandOf(m, t)
@@ -3675,14 +3676,14 @@ function LOOK.buildSpellsPage(g)
       function() return db.contagion == true end, function(v) db.contagion = v end)
     state = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   end
-  -- 0.22: Demonic Brand charges (warlocks only, experimental)
+  -- 0.22: Demonic Brand charges (warlocks only; 0.22.2: on by default)
   local isLock = classFile == "WARLOCK"
   local bsec, bcheck, bstate
   if isLock then
-    bsec = makeSection(g, string.format(L["%s (experimental)"], LOOK.spell("Demonic Brand")), -300)
+    bsec = makeSection(g, LOOK.spell("Demonic Brand"), -300)
     bcheck = makeCheck(g, "Count the pet's empowered attacks",
       "The talent: your Searing Pain brands the enemy for 10 sec and your pet's next 6 attacks on it deal extra damage. The 10 sec timer always runs. Ticked: a gold number after the time shows the attacks left. The game doesn't say which attack used a charge, so DotWatch guesses it (a pet hit and a debuff change at the same moment) and can be off.",
-      function() return db.brandCharges == true end, function(v) db.brandCharges = v dirty = true end)
+      function() return db.brandCharges ~= false end, function(v) db.brandCharges = v dirty = true end)
     bstate = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   end
 
@@ -4555,7 +4556,7 @@ SlashCmdList.DOTWATCH = function(msg)
     end
     if myClass() == "PRIEST" then say("  Devouring Contagion: " .. TRACK.talent .. (db.contagion == true and "" or " (off, experimental)")) end
     if myClass() == "WARLOCK" then
-      say("  Demonic Brand: talent " .. (CORE.brandTalent() and "yes" or "no") .. ", charges " .. (CORE.brandOn() and "counted (experimental)" or "off"))
+      say("  Demonic Brand: talent " .. (CORE.brandTalent() and "yes" or "no") .. ", charges " .. (CORE.brandOn() and "counted" or "off"))
     end
     if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  " .. string.format(L["%s: not known"], LOOK.spell("Siphon Life"))) end
     local noName = {}
