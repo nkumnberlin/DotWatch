@@ -137,7 +137,7 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 - **Classic Blizzard dialog look** (like Attune / AutoBiographer): dark marble background on a solid base, gold dialog border, gold titles, red buttons, navigation list on the left. Not the modern flat look.
 - Game textures and icons only (e.g. `Spell_Shadow_EvilEye` minimap eye, `UI-TargetingFrame-Skull`).
 - Every option that changes visuals gets a **live preview**.
-- Options window: 700 × 520, navigation pages (General · Display · Look · Bars and time · Timers · Tracked spells · Enemies · Statistics), buttons Test · Reset position · Close.
+- Options window: 700 × 520, navigation pages (General · Display › Style options · Look · Timers · Tracked spells · Enemies · Statistics), buttons Test · Reset position · Close.
 - The unlocked state must look obviously different (gold edge + "Move mode" tab with a Lock button).
 - Labels must fit in every language (shorten, full name in a tooltip).
 

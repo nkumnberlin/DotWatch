@@ -305,7 +305,6 @@ ns.STRINGS.zhTW = {
   -- 0.23: Timeline style, Bars and time page
   ["Timeline"] = "時間軸",
   ["One lane per DoT on a shared time axis: now is on the left, the colored part runs to the DoT's end, dots are the ticks to come."] = "每個 DoT 一條軌道，共用一條時間軸：左邊是現在，彩色部分延伸到 DoT 結束，圓點是之後的跳數。",
-  ["Bars and time"] = "計時條與時間",
   ["Time format"] = "時間格式",
   ["Seconds (65)"] = "秒（65）",
   ["A minute or more in seconds."] = "一分鐘以上以秒顯示。",
@@ -332,4 +331,10 @@ ns.STRINGS.zhTW = {
   ["15 s"] = "15 秒",
   ["20 s"] = "20 秒",
   ["30 s"] = "30 秒",
+  -- 0.23: Style options page (sub-page of Display)
+  ["Style options"] = "樣式選項",
+  ["Change style"] = "更換樣式",
+  ["Opens the Display page, where you pick the style."] = "打開顯示頁面，在那裡選擇樣式。",
+  ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "此樣式沒有更多選項。計時條、細計時條和時間軸有各自的選項。",
+  ["Style: %s"] = "樣式：%s",
 }

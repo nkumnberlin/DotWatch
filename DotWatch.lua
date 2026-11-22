@@ -2354,7 +2354,6 @@ end
 local STYLES = { "bars", "slim", "icons", "table", "focus", "timeline" }
 local STYLE_NAMES = { bars = "Bars", slim = "Slim bars", icons = "Icons with timers",
   table = "Table", focus = "Target big, others small", timeline = "Timeline" }
-LOOK.BAR_STYLES = { bars = true, slim = true, timeline = true } -- 0.23: the "Bars and time" page shows these
 local SIZES = {
   { 0.8, "Small", "A compact list that takes little room." },
   { 1.0, "Medium", "The normal size." },
@@ -3932,35 +3931,94 @@ local function buildTimersPage(pg)
   makeButton(pg, "Test", 60, function() testBars() end):SetPoint("TOPLEFT", 30, y)
 end
 
--- 0.23 page: Bars and time (#19 + the Timeline span). Left column, the shared preview on the right
--- (it shows Bars while the chosen style has no bars).
-function LOOK.buildBarsPage(pg, COL)
-  local function radio(label, help, value, key, default, x, y)
-    makeRadio(pg, label, help, value, function() local v = db[key] if v == nil then v = default end return v end,
-      function(v) db[key] = v end):SetPoint("TOPLEFT", x, y)
+-- 0.23 page: Style options, a sub-page of Display (Nico: options only for the style in use).
+-- On top the chosen style + a button back to Display. Then only what applies to it: the time
+-- format (every style shows seconds), the bar options (#19) for Bars and Slim bars, the look-ahead
+-- for Timeline (#18). Sections are laid out again on every OnShow; the shared preview on the right
+-- shows the chosen style.
+LOOK.STYLE_GROUPS = { bars = { "time", "bars" }, slim = { "time", "bars" }, timeline = { "time", "timeline" } }
+function LOOK.buildStylePage(pg, COL)
+  local groups = { time = {}, bars = {}, timeline = {}, none = {} }
+  local function put(group, w, x, dy) local g = groups[group] g[#g + 1] = { w = w, x = x, dy = dy } return w end
+  local function section(group, label, dy)
+    local fs = pg:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fs:SetText(L[label])
+    local line = pg:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(1, 0.82, 0, 0.25)
+    line:SetHeight(1)
+    line:SetPoint("LEFT", fs, "RIGHT", 8, 0)
+    line:SetPoint("RIGHT", pg, "LEFT", COL, 0)
+    fs.line = line
+    put(group, fs, 24, dy)
   end
-  makeSection(pg, "Time format", -54, 24, COL)
-  radio("Seconds (65)", "A minute or more in seconds.", "sec", "timeFmt", "sec", 28, -78)
-  radio("Minutes (1:05)", "A minute or more as minutes and seconds.", "min", "timeFmt", "sec", 28, -100)
-  radio("Tenths under 10 s", "9.5 instead of 9 in the last 10 seconds.", 10, "tenths", 10, 28, -124)
-  radio("Tenths under 3 s", "Tenths only in the last 3 seconds.", 3, "tenths", 10, 28, -146)
-  radio("No tenths", "Whole seconds only.", 0, "tenths", 10, 28, -168)
+  local function radio(group, label, help, value, key, default, x, dy)
+    put(group, makeRadio(pg, label, help, value, function() local v = db[key] if v == nil then v = default end return v end,
+      function(v) db[key] = v end), x, dy)
+  end
 
-  makeSection(pg, "Bars", -198, 24, COL)
-  radio("Drain", "The bar gets shorter as the time runs out.", "drain", "barFill", "drain", 28, -222)
-  radio("Fill", "The bar grows until the time runs out.", "fill", "barFill", "drain", 138, -222)
-  makeCheck(pg, "Spark at the bar's edge", "A bright spark where the bar ends, like on the cast bar.",
-    function() return db.spark == true end, function(v) db.spark = v end):SetPoint("TOPLEFT", 24, -246)
+  -- the chosen style and the way back to Display
+  local cur = pg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  cur:SetPoint("TOPLEFT", 24, -58)
+  cur:SetWidth(COL - 134)
+  cur:SetJustifyH("LEFT")
+  cur:SetWordWrap(false)
+  local change = makeButton(pg, "Change style", 100, function() if pg.goDisplay then pg.goDisplay() end end)
+  change:SetPoint("TOPLEFT", COL - 104, -53)
+  tip(change, "Change style", "Opens the Display page, where you pick the style.")
+
+  section("time", "Time format", 0)
+  radio("time", "Seconds (65)", "A minute or more in seconds.", "sec", "timeFmt", "sec", 28, -24)
+  radio("time", "Minutes (1:05)", "A minute or more as minutes and seconds.", "min", "timeFmt", "sec", 28, -46)
+  radio("time", "Tenths under 10 s", "9.5 instead of 9 in the last 10 seconds.", 10, "tenths", 10, 28, -70)
+  radio("time", "Tenths under 3 s", "Tenths only in the last 3 seconds.", 3, "tenths", 10, 28, -92)
+  radio("time", "No tenths", "Whole seconds only.", 0, "tenths", 10, 28, -114)
+  groups.time.h = 146
+
+  section("bars", "Bars", 0)
+  radio("bars", "Drain", "The bar gets shorter as the time runs out.", "drain", "barFill", "drain", 28, -24)
+  radio("bars", "Fill", "The bar grows until the time runs out.", "fill", "barFill", "drain", 138, -24)
+  put("bars", makeCheck(pg, "Spark at the bar's edge", "A bright spark where the bar ends, like on the cast bar.",
+    function() return db.spark == true end, function(v) db.spark = v end), 24, -48)
   local scaleHelp = "Every bar uses the same scale, so the times can be compared. Longer times fill the whole bar."
-  radio("Own length", "Each bar is as long as its spell's duration.", 0, "barScale", 0, 28, -274)
-  radio("Same scale: 15 s", scaleHelp, 15, "barScale", 0, 28, -296)
-  radio("Same scale: 30 s", scaleHelp, 30, "barScale", 0, 28, -318)
+  radio("bars", "Own length", "Each bar is as long as its spell's duration.", 0, "barScale", 0, 28, -76)
+  radio("bars", "Same scale: 15 s", scaleHelp, 15, "barScale", 0, 28, -98)
+  radio("bars", "Same scale: 30 s", scaleHelp, 30, "barScale", 0, 28, -120)
+  groups.bars.h = 152
 
-  makeSection(pg, "Timeline", -350, 24, COL)
+  section("timeline", "Timeline", 0)
   local spanHelp = "How far ahead the Timeline style looks. Grid lines every 5 seconds."
-  radio("15 s", spanHelp, 15, "lineSpan", 20, 28, -374)
-  radio("20 s", spanHelp, 20, "lineSpan", 20, 88, -374)
-  radio("30 s", spanHelp, 30, "lineSpan", 20, 148, -374)
+  radio("timeline", "15 s", spanHelp, 15, "lineSpan", 20, 28, -24)
+  radio("timeline", "20 s", spanHelp, 20, "lineSpan", 20, 88, -24)
+  radio("timeline", "30 s", spanHelp, 30, "lineSpan", 20, 148, -24)
+  groups.timeline.h = 56
+
+  local none = pg:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  none:SetWidth(COL - 30)
+  none:SetJustifyH("LEFT")
+  none:SetText(L["This style has no more options. Bars, Slim bars and Timeline have their own."])
+  put("none", none, 26, 0)
+  groups.none.h = 30
+
+  pg.relayout = function()
+    local style = STYLE_NAMES[db.style or "bars"] and (db.style or "bars") or "bars"
+    cur:SetText(string.format(L["Style: %s"], "|cffffd200" .. L[STYLE_NAMES[style]] .. "|r"))
+    local list = LOOK.STYLE_GROUPS[style] or { "time", "none" }
+    local on = {}
+    for _, key in ipairs(list) do on[key] = true end
+    local y = -90
+    for _, key in ipairs({ "time", "bars", "timeline", "none" }) do
+      for _, it in ipairs(groups[key]) do
+        it.w:SetShown(on[key] or false)
+        if it.w.line then it.w.line:SetShown(on[key] or false) end
+        if on[key] then
+          it.w:ClearAllPoints()
+          it.w:SetPoint("TOPLEFT", pg, "TOPLEFT", it.x, y + it.dy)
+        end
+      end
+      if on[key] then y = y - groups[key].h end
+    end
+  end
+  pg:HookScript("OnShow", pg.relayout)
 end
 
 -- 0.20 page: Tracked spells. Which of your class's spells DotWatch tracks (a default list, changed
@@ -4591,10 +4649,7 @@ local function buildOptions()
   local pv = { canvas = newCanvas(holder), box = box }
   pv.redraw = function()
     pv.list, pv.tg = buildSample()
-    -- 0.23: the "Bars and time" page shows Bars when the chosen style has no bars
-    local style = db.style
-    if pv.barsOnly and not LOOK.BAR_STYLES[style or "bars"] then style = "bars" end
-    local h, w = drawCanvas(pv.canvas, pv.list, pv.tg, style)
+    local h, w = drawCanvas(pv.canvas, pv.list, pv.tg, db.style)
     -- fit the sample into the box: shrink when too big, grow a little when small, and
     -- center it (0.14.1: Table and Target big only used the top of the box)
     local availW, availH = (box:GetWidth() or 240) - 24, (box:GetHeight() or 320) - 24
@@ -4632,8 +4687,8 @@ local function buildOptions()
   ---------------- page 7: Tracked spells (0.20), listed after Timers ----------------
   LOOK.buildSpellsPage(pages[7])
 
-  ---------------- page 8: Bars and time (0.23), listed after Look ----------------
-  LOOK.buildBarsPage(pages[8], 232)
+  ---------------- page 8: Style options (0.23), a sub-page of Display ----------------
+  LOOK.buildStylePage(pages[8], 232)
   makeSection(pages[8], "Preview", -54, 248)
 
   ---------------- navigation list on the left ----------------
@@ -4656,9 +4711,9 @@ local function buildOptions()
       if k == i then it.label:SetTextColor(1, 1, 1) else it.label:SetTextColor(1, 0.82, 0) end
     end
     f.page = i
-    pv.barsOnly = i == 8
+    if i == 8 then pages[8].relayout() end -- 0.23: show only the options of the chosen style
     if i == 2 or i == 3 or i == 8 then
-      -- one preview, shown on the Display, the Look and the Bars and time page
+      -- one preview, shown on the Display, the Style options and the Look page
       box:SetParent(pages[i])
       box:ClearAllPoints()
       box:SetPoint("TOPLEFT", pages[i], "TOPLEFT", 248, -76)
@@ -4667,8 +4722,9 @@ local function buildOptions()
       pv.redraw()
     end
   end
-  local NAV = { { 1, "General" }, { 2, "Display" }, { 3, "Look" }, { 8, "Bars and time" }, { 4, "Timers" }, { 7, "Tracked spells" },
-    { 5, "Enemies" }, { 6, "Statistics" } }
+  -- 0.23: Style options sits indented under Display (it belongs to the style chosen there)
+  local NAV = { { 1, "General" }, { 2, "Display" }, { 8, "Style options", sub = true }, { 3, "Look" }, { 4, "Timers" },
+    { 7, "Tracked spells" }, { 5, "Enemies" }, { 6, "Statistics" } }
   for pos, entry in ipairs(NAV) do
     local i, label = entry[1], entry[2]
     local it = CreateFrame("Button", nil, navBg)
@@ -4685,12 +4741,24 @@ local function buildOptions()
     it.mark:SetPoint("LEFT", 0, 0)
     it.mark:SetShown(false)
     it:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    it.label = it:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    it.label:SetPoint("LEFT", 10, 0)
+    it.label = it:CreateFontString(nil, "OVERLAY", entry.sub and "GameFontNormalSmall" or "GameFontNormal")
+    it.label:SetPoint("LEFT", entry.sub and 24 or 10, 0)
     it.label:SetText(L[label])
+    if entry.sub then
+      -- a thin gold branch line in front: this page belongs to the entry above
+      local br = it:CreateTexture(nil, "ARTWORK")
+      br:SetColorTexture(1, 0.82, 0, 0.5)
+      br:SetSize(6, 1)
+      br:SetPoint("LEFT", 13, 0)
+      local up = it:CreateTexture(nil, "ARTWORK")
+      up:SetColorTexture(1, 0.82, 0, 0.5)
+      up:SetSize(1, 14)
+      up:SetPoint("BOTTOMLEFT", br, "LEFT", 0, 0)
+    end
     it:SetScript("OnClick", function() select(i) end)
     navItems[i] = it
   end
+  pages[8].goDisplay = function() select(2) end -- 0.23: "Change style" on Style options
 
   ---------------- buttons ----------------
   local bClose = makeButton(f, "Close", 100, function() f:Hide() end)

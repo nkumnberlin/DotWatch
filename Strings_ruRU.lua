@@ -303,7 +303,6 @@ ns.STRINGS.ruRU = {
   -- 0.23: Timeline style, Bars and time page
   ["Timeline"] = "Шкала времени",
   ["One lane per DoT on a shared time axis: now is on the left, the colored part runs to the DoT's end, dots are the ticks to come."] = "Одна дорожка на DoT на общей оси времени: «сейчас» слева, цветная часть идёт до конца DoT, точки — будущие тики.",
-  ["Bars and time"] = "Полосы и время",
   ["Time format"] = "Формат времени",
   ["Seconds (65)"] = "Секунды (65)",
   ["A minute or more in seconds."] = "Минута и больше в секундах.",
@@ -330,4 +329,10 @@ ns.STRINGS.ruRU = {
   ["15 s"] = "15 с",
   ["20 s"] = "20 с",
   ["30 s"] = "30 с",
+  -- 0.23: Style options page (sub-page of Display)
+  ["Style options"] = "Настройки стиля",
+  ["Change style"] = "Сменить стиль",
+  ["Opens the Display page, where you pick the style."] = "Открывает страницу «Отображение», где выбирается стиль.",
+  ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "У этого стиля нет других настроек. Свои настройки есть у стилей «Полосы», «Тонкие полосы» и «Шкала времени».",
+  ["Style: %s"] = "Стиль: %s",
 }

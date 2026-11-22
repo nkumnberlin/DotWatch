@@ -302,7 +302,6 @@ ns.STRINGS.deDE = {
   -- 0.23: Timeline style, Bars and time page
   ["Timeline"] = "Zeitleiste",
   ["One lane per DoT on a shared time axis: now is on the left, the colored part runs to the DoT's end, dots are the ticks to come."] = "Eine Spur pro DoT auf einer gemeinsamen Zeitachse: Jetzt ist links, der farbige Teil reicht bis zum Ende des DoTs, Punkte sind die kommenden Ticks.",
-  ["Bars and time"] = "Balken und Zeit",
   ["Time format"] = "Zeitformat",
   ["Seconds (65)"] = "Sekunden (65)",
   ["A minute or more in seconds."] = "Eine Minute und mehr in Sekunden.",
@@ -329,4 +328,10 @@ ns.STRINGS.deDE = {
   ["15 s"] = "15 s",
   ["20 s"] = "20 s",
   ["30 s"] = "30 s",
+  -- 0.23: Style options page (sub-page of Display)
+  ["Style options"] = "Stil-Optionen",
+  ["Change style"] = "Stil ändern",
+  ["Opens the Display page, where you pick the style."] = "Öffnet die Seite Anzeige, dort wählst du den Stil.",
+  ["This style has no more options. Bars, Slim bars and Timeline have their own."] = "Dieser Stil hat keine weiteren Optionen. Balken, Schmale Balken und Zeitleiste haben eigene.",
+  ["Style: %s"] = "Stil: %s",
 }

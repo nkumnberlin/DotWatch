@@ -7,7 +7,7 @@ DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for e
 | | Version | Where |
 |---|---|---|
 | **Current release** | **v0.22.2** | [CurseForge: Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), tag `v0.22.2` |
-| **In testing** | 0.23 | `main`: range dimming, "Out of sight", Timeline style, Bars and time page (not released yet) |
+| **In testing** | 0.23 | `main`: range dimming, "Out of sight", Timeline style, Style options page (not released yet) |
 | **Experimental** (off by default) | since v0.20.3 | Priest: follow Devouring Plague jumps, see [Experimental features](#experimental-features-off-by-default) |
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
@@ -42,7 +42,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Nameplate status** (Enemies page, with a live preview of two nameplates): show missing DoTs right on the enemy's plate by coloring its letter, a red frame, a missing count, or **mini bars** for each DoT. The mini bars can be made taller or thinner, moved up or down (also above the plate, or below the enemy's cast bar), get the DoT's icon before or after them (grayed out while missing) and tick marks.
 - **Crowd-control warning**: your crowd control blinks and turns red in its last seconds (2–10 s, default 5).
 - **Six display styles**: bars, slim bars, icons with timers, table (one column per DoT, curse and crowd-control spell), target big with others small, and (0.23) **Timeline**: one lane per DoT on a shared time axis, now on the left, the colored part running to the DoT's end, ticks to come as dots, grid lines every 5 s, a gray lane for a missing DoT. Live preview in the options.
-- **Bars and time** page (0.23): time as seconds (65) or minutes (1:05), tenths under 10 s, under 3 s or never; bars that drain or fill; a spark at the bar's edge; every bar on its own length or on the same 15 s / 30 s scale; how far the Timeline looks ahead (15 / 20 / 30 s).
+- **Style options** (0.23, under Display): only the options of the style you picked. Every style: time as seconds (65) or minutes (1:05), tenths under 10 s, under 3 s or never. Bars and Slim bars: bars that drain or fill, a spark at the bar's edge, every bar on its own length or on the same 15 s / 30 s scale. Timeline: how far it looks ahead (15 / 20 / 30 s).
 - **Move mode**: while the window is unlocked it has a purple background, a gold frame and a tab with a **Lock** button. Drag it into place, click Lock, and the list only shows up while timers run.
 - **Refresh warning**: DoTs pulse in their last seconds, with an optional sound (ten game sounds, from a soft click to the raid warning horn).
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop (not while the enemy is banished).
@@ -50,7 +50,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Demonic Brand** (Warlock, Demonology talent, 0.22): your Searing Pain starts a 10 s "Demonic Brand" timer on that enemy, shown while it runs, always as the enemy's first row (0.22.1). A gold number after the time shows how many of the pet's 6 empowered attacks are left (0.22.2: on by default; Options › Tracked spells). Forever doesn't tell addons which attack used a charge, so DotWatch counts a charge when the branded enemy takes fire or shadow damage and its debuffs change in the same moment, but not on your own DoT ticks and casts. At 0 the timer ends. Only with the talent learned.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
 - **Languages**: English, German, Russian and Chinese (simplified and traditional) clients and interface, see [Languages](#languages).
-- **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch. Pages: General, Display, Look, Bars and time, Timers, Tracked spells, Enemies, Statistics.
+- **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch. Pages: General, Display (with Style options), Look, Timers, Tracked spells, Enemies, Statistics.
 
 ### Experimental features (off by default)
 
