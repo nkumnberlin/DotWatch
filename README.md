@@ -6,8 +6,7 @@ DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for e
 
 | | Version | Where |
 |---|---|---|
-| **Current release** | **v0.22.2** | [CurseForge: Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), tag `v0.22.2` |
-| **In testing** | 0.23 | `main`: range dimming, "Out of sight", Timeline style, Style options page (not released yet) |
+| **Current release** | **v0.23** | [CurseForge: Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), tag `v0.23` |
 | **Experimental** (off by default) | since v0.20.3 | Priest: follow Devouring Plague jumps, see [Experimental features](#experimental-features-off-by-default) |
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
