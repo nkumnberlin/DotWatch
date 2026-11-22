@@ -44,7 +44,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Refresh warning**: DoTs pulse in their last seconds, with an optional sound (ten game sounds, from a soft click to the raid warning horn).
 - **Tick marks** on the bars, and a "lost?" mark when a DoT's ticks stop (not while the enemy is banished).
 - **Look options**: font size, bar texture, a color per DoT (for your class), window size, growth direction, fading out of combat.
-- **Demonic Brand** (Warlock, Demonology talent, 0.22): your Searing Pain starts a 10 s "Demonic Brand" timer on that enemy, shown while it runs. Only with the talent learned.
+- **Demonic Brand** (Warlock, Demonology talent, 0.22): your Searing Pain starts a 10 s "Demonic Brand" timer on that enemy, shown while it runs, always as the enemy's first row (0.22.1). Only with the talent learned.
 - **Statistics** (optional): resists and immunes per enemy type and spell, and a short summary after each fight.
 - **Languages**: English, German, Russian and Chinese (simplified and traditional) clients and interface, see [Languages](#languages).
 - **Classic options window**: `/dw`, the minimap button (Eye of Kilrogg), or Escape › Options › AddOns › DotWatch. Pages: General, Display, Look, Timers, Tracked spells, Enemies, Statistics.

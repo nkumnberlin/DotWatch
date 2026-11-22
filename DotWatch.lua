@@ -18,6 +18,7 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.22.1: a running Demonic Brand is always the first row of its enemy (first column in Table).
 -- New in 0.22: Demonic Brand (warlock talent): Searing Pain starts a 10 s timer on that enemy;
 -- experimental: the pet attacks left (Tracked spells page), guessed from same-frame hits.
 -- New in 0.21: the kill skull and its tooltip damage math are gone. A resisted or immune DoT or
@@ -56,7 +57,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.22"
+local VERSION = "0.22.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -137,7 +138,7 @@ local SPELLS = {
   -- brands the enemy for 10 s, the pet's next 6 attacks (rank 3) on it deal extra damage.
   -- Shown while active; only with the talent learned. Charges: see CORE.brandSignal.
   { name = "Demonic Brand", id = 1293695, cast = 5676, castName = "Searing Pain", dur = 10,
-    color = { 1.00, 0.35, 0.15 }, brand = true },
+    color = { 1.00, 0.35, 0.15 }, brand = true, group = "brand" }, -- group: another Searing Pain rank replaces it
 
   -- 0.13: the other classes (WoW Forever data, see project doc class-dots-cc.md).
   -- Not tracked on purpose: random procs, combo-point finishers, channels, self-centered AoE.
@@ -1857,6 +1858,10 @@ end
 local function rowsFor(m, forcePlaceholders)
   local rows = {}
   local immune = db.immune[npcID(m.guid) or 0] or {}
+  -- 0.22.1: a running Demonic Brand always comes first (Nico: the brand decides the next cast)
+  for _, d in pairs(m.dots) do
+    if d.info.def.brand then rows[1] = { dot = d, slot = "x:" .. d.info.name } end
+  end
   for _, slot in ipairs(SLOT_ORDER) do
     local active
     for _, d in pairs(m.dots) do
@@ -1873,7 +1878,7 @@ local function rowsFor(m, forcePlaceholders)
   end
   local extra = {}
   for _, d in pairs(m.dots) do
-    if not d.info.slot then extra[#extra + 1] = d end
+    if not d.info.slot and not d.info.def.brand then extra[#extra + 1] = d end
   end
   table.sort(extra, function(a, b) return a.start < b.start end)
   -- 0.14.1: every curse / control spell has its own key (Table style: own column)
@@ -2426,6 +2431,12 @@ end
 render.table = function(list, tg, W)
   -- columns: every known slot, plus one for curses if any curse is running
   local cols = {}
+  -- 0.22.1: Demonic Brand gets the first column while it runs on any listed enemy
+  for _, m in ipairs(list) do
+    for _, d in pairs(m.dots) do
+      if d.info.def.brand and not cols[1] then cols[1] = { slot = "x:" .. d.info.name, icon = d.info.icon } end
+    end
+  end
   for _, slot in ipairs(SLOT_ORDER) do
     local s, id = slotSpell(slot)
     local active
@@ -2439,7 +2450,7 @@ render.table = function(list, tg, W)
   local extra, seen = {}, {}
   for _, m in ipairs(list) do
     for _, d in pairs(m.dots) do
-      if not d.info.slot then
+      if not d.info.slot and not d.info.def.brand then
         local e = seen[d.info.name]
         if not e then
           e = { slot = "x:" .. d.info.name, icon = d.info.icon, first = d.start }
