@@ -18,6 +18,8 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.22: Demonic Brand (warlock talent): Searing Pain starts a 10 s timer on that enemy;
+-- experimental: the pet attacks left (Tracked spells page), guessed from same-frame hits.
 -- New in 0.21: the kill skull and its tooltip damage math are gone. A resisted or immune DoT or
 -- crowd control makes the enemy's block (or the whole list) flash (Timers > Resists).
 -- New in 0.18.1: review fixes. The language stays fixed until /reload (no mixed texts after
@@ -54,7 +56,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.21"
+local VERSION = "0.22"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -131,6 +133,11 @@ local SPELLS = {
   { name = "Banish", id = 710,                dur = 30,  color = { 0.45, 0.85, 1.00 }, cc = true, calm = true, invuln = true },
   { name = "Enslave Demon", id = 1098,         dur = 300, color = { 0.95, 0.55, 0.15 }, cc = true, calm = true },
   { name = "Death Coil", id = 6789,            dur = 3,   color = { 0.55, 0.20, 0.65 }, cc = true },
+  -- 0.22: Demonic Brand (Forever Demonology talent, id = the talent spell): Searing Pain (cast)
+  -- brands the enemy for 10 s, the pet's next 6 attacks (rank 3) on it deal extra damage.
+  -- Shown while active; only with the talent learned. Charges: see CORE.brandSignal.
+  { name = "Demonic Brand", id = 1293695, cast = 5676, castName = "Searing Pain", dur = 10,
+    color = { 1.00, 0.35, 0.15 }, brand = true },
 
   -- 0.13: the other classes (WoW Forever data, see project doc class-dots-cc.md).
   -- Not tracked on purpose: random procs, combo-point finishers, channels, self-centered AoE.
@@ -255,6 +262,13 @@ local function rebuildDefs()
       s.noLoc = (s.id and not loc) or nil -- 0.18.1: this ID has no name here (wrong ID on Forever?)
       s.loc = loc or s.loc or s.name
       if not DEF_BY_NAME[s.loc] then DEF_BY_NAME[s.loc] = s end
+      -- 0.22: a spell started by another cast (Demonic Brand by Searing Pain): the cast's name,
+      -- English and the client's, leads to it too
+      if s.cast then
+        local cl = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(s.cast)
+        if type(cl) == "string" and not (issecretvalue and issecretvalue(cl)) and cl ~= "" then DEF_BY_NAME[cl] = s end
+        DEF_BY_NAME[s.castName] = s
+      end
     end
   end
   for _, slot in ipairs(CLASS_SLOTS[myClass() or "WARLOCK"] or {}) do SLOT_ORDER[#SLOT_ORDER + 1] = slot end
@@ -332,10 +346,12 @@ local function spellInfo(id)
   if not def then spellCache[id] = false return nil end
   if def.cc and db and db.trackCC == false then return nil end
   if not TRACK.on(def) then return nil end -- 0.20: unticked on the Spells page (not cached)
+  if def.brand and not CORE.brandTalent() then return nil end -- 0.22: talent not learned (not cached)
   local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
-  local descDur = CORE.readDuration(desc, def)
-  local info = { id = id, name = def.name, shown = name, def = def, group = def.group, slot = def.slot, color = def.color,
-    icon = iconOf(id), descDur = descDur }
+  -- 0.22: a spell started by another cast keeps its own name, icon and table duration
+  local descDur = not def.cast and CORE.readDuration(desc, def) or nil
+  local info = { id = id, name = def.name, shown = def.cast and def.loc or name, def = def, group = def.group,
+    slot = def.slot, color = def.color, icon = iconOf(def.cast and def.id or id), descDur = descDur }
   spellCache[id] = info
   return info
 end
@@ -746,6 +762,61 @@ local function evaluate(m, d)
   end
 end
 
+---------------------------------------------------------------------------
+-- 0.22: Demonic Brand charges (experimental, db.brandCharges == true). DotProbe 0.7: every
+-- empowered pet attack on the branded enemy comes as a fire/shadow UNIT_COMBAT hit and a
+-- UNIT_AURA "updated" on that enemy in the same frame (the Imp's Firebolt hits twice, 0.03 to
+-- 0.1 s apart: one update, one charge). Our own casts and DoT ticks can look the same, so a
+-- pair close to one of them is skipped. The brand can't be read in combat: this is a guess.
+---------------------------------------------------------------------------
+CORE.BRAND_CHARGES = 6 -- rank 3/3 ("next 6 attacks"); the rank spells' IDs are not known yet
+function CORE.brandTalent() return plain(IsPlayerSpell, 1293695) == true end
+function CORE.brandOn() return db and db.brandCharges == true end
+
+-- the running brand on this enemy, if any
+function CORE.brandOf(m, t)
+  for _, d in pairs(m.dots) do
+    if d.info.def.brand and d.charges and d.expires > t then return d end
+  end
+end
+
+-- was this pair one of ours? a cast of ours landing, or a tick of our DoT of that school
+function CORE.brandOwn(m, t, school)
+  for _, d in pairs(m.dots) do
+    if math.abs(d.start - t) <= 0.15 then return "own cast " .. d.info.name end
+    local iv = d.info.def.tick
+    if iv and d.info.def.school == school and t > d.start and t <= d.expires + 0.2 then
+      local k = (t - d.start) / iv
+      if k >= 0.5 and math.abs(k - math.floor(k + 0.5)) * iv <= 0.15 then return "own tick " .. d.info.name end
+    end
+  end
+end
+
+-- kind = "hit" (fire/shadow UNIT_COMBAT WOUND) or "upd" (UNIT_AURA updated) on enemy m
+function CORE.brandSignal(m, kind, school)
+  if not CORE.brandOn() then return end
+  local t = now()
+  local b = CORE.brandOf(m, t)
+  if not b then return end
+  if kind == "hit" then m.brandHitT, m.brandHitSchool = t, school else m.brandUpdT = t end
+  if not (m.brandHitT and m.brandUpdT) or math.abs(m.brandHitT - m.brandUpdT) > SAME_FRAME then return end
+  if m.brandUsedT and t - m.brandUsedT <= 0.15 then return end -- one charge per pet attack
+  m.brandUsedT = t
+  local own = CORE.brandOwn(m, t, m.brandHitSchool)
+  if own then
+    dbg(string.format("BRAND skip on [%s]: %s", short(m.guid), own))
+    return
+  end
+  b.charges = b.charges - 1
+  dbg(string.format("BRAND charge on [%s] %+.2fs, school %s: %d left", short(m.guid), t - b.start,
+    tostring(m.brandHitSchool), b.charges))
+  if b.charges <= 0 then
+    b.expires = t
+    dbg("BRAND used up on [" .. short(m.guid) .. "]")
+  end
+  dirty = true
+end
+
 local orphans = {} -- castGUID -> { info, t }: SUCCEEDED that arrived before (or without) its SENT
 
 -- jump = true (0.20): started by Devouring Contagion, not by a cast of ours: no cast counted,
@@ -762,6 +833,7 @@ local function startDot(info, guid, name, t, how, jump, durOverride)
   local dur = durOverride or durationOf(info) -- 0.20.1: a jumped plague keeps what was left
   local d = { info = info, start = t, expires = t + dur, prev = prev,
     confirmed = prev and prev.confirmed or false }
+  if info.def.brand then d.charges = CORE.BRAND_CHARGES end -- 0.22: a new brand has all charges again
   if info.group then
     for id, other in pairs(m.dots) do
       if id ~= info.id and other.info.group == info.group then
@@ -1042,6 +1114,7 @@ local function onUnitCombat(unit, action, _, _, school)
       if school == 32 and m.jumpT and now() - m.jumpT < 40 then
         dbg(string.format("CONTAGION TICK on %s [%s] %+.1fs after the jump", m.name, short(g), now() - m.jumpT))
       end
+      if school == 4 or school == 32 then CORE.brandSignal(m, "hit", school) end -- 0.22
     end
     return
   end
@@ -1064,6 +1137,7 @@ local function onUnitAura(unit, info)
     local hasAdded = issecret(added) or (type(added) == "table" and #added > 0)
     local hasUpdated = issecret(updated) or (type(updated) == "table" and #updated > 0)
     if hasAdded or hasUpdated then lastAura[guid] = now() end
+    if m and hasUpdated then CORE.brandSignal(m, "upd") end -- 0.22
     if (hasAdded or hasUpdated) and TRACK.contagionOn() then TRACK.onAura(unit, guid, hasAdded, hasUpdated) end
     if hasAdded and next(armed) then trapHit("aura", unit) end
     if m and hasAdded then
@@ -2554,6 +2628,10 @@ local function timeText(fs, d, left)
   if d.lost then
     fs:SetText(L["lost?"])
     fs:SetTextColor(1, 0.6, 0.2)
+  elseif d.charges and CORE.brandOn() then
+    -- 0.22: Demonic Brand: the pet attacks left, in gold after the time
+    fs:SetFormattedText("%s |cffffd200%d|r", fmtTime(left), d.charges)
+    timeColor(fs, left)
   else
     fs:SetText(fmtTime(left))
     timeColor(fs, left)
@@ -3070,6 +3148,13 @@ local function testBars()
   end
   addFlash(mobs["Test-0-0-0-0-2-CCC"], LOOK.spell(s2) .. ": " .. L["Resisted"], 1, 0.3, 0.3)
   mobs["Test-0-0-0-0-2-CCC"].flashAt, mobs["Test-0-0-0-0-2-CCC"].flashKind = t, "resist" -- 0.21
+  -- 0.22: warlocks with the talent see a Demonic Brand with 4 charges left
+  local bd = DEF_BY_NAME["Demonic Brand"]
+  if bd and TRACK.on(bd) and CORE.brandTalent() then
+    local info = (type(known[bd.name]) == "number" and spellInfo(known[bd.name]))
+      or { id = -9, name = bd.name, shown = bd.loc, def = bd, color = bd.color, icon = iconOf(bd.id) }
+    mobs["Test-0-0-0-0-1-BBB"].dots[info.id] = { info = info, start = t - 3, expires = t + 7, confirmed = true, charges = 4 }
+  end
   say(L["Test timers shown. They run out on their own or end when you leave combat."])
 end
 
@@ -3579,6 +3664,16 @@ function LOOK.buildSpellsPage(g)
       function() return db.contagion == true end, function(v) db.contagion = v end)
     state = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   end
+  -- 0.22: Demonic Brand charges (warlocks only, experimental)
+  local isLock = classFile == "WARLOCK"
+  local bsec, bcheck, bstate
+  if isLock then
+    bsec = makeSection(g, string.format(L["%s (experimental)"], LOOK.spell("Demonic Brand")), -300)
+    bcheck = makeCheck(g, "Count the pet's empowered attacks",
+      "The talent: your Searing Pain brands the enemy for 10 sec and your pet's next 6 attacks on it deal extra damage. The 10 sec timer always runs. Ticked: a gold number after the time shows the attacks left. The game doesn't say which attack used a charge, so DotWatch guesses it (a pet hit and a debuff change at the same moment) and can be off.",
+      function() return db.brandCharges == true end, function(v) db.brandCharges = v dirty = true end)
+    bstate = g:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  end
 
   g:HookScript("OnShow", function()
     -- 0.20.2: every spell of your class, two columns; not learned yet = gray name, faded icon
@@ -3606,6 +3701,15 @@ function LOOK.buildSpellsPage(g)
       local t = TRACK.talent
       state:SetText(t == "yes" and L["Talent: learned"] or t == "no" and L["Talent: not learned (nothing to follow)"]
         or L["Talent: not readable here, jumps are followed anyway"])
+    end
+    if isLock then
+      bsec:ClearAllPoints()
+      bsec:SetPoint("TOPLEFT", g, "TOPLEFT", 24, y)
+      bcheck:ClearAllPoints()
+      bcheck:SetPoint("TOPLEFT", 26, y - 22)
+      bstate:ClearAllPoints()
+      bstate:SetPoint("TOPLEFT", 54, y - 48)
+      bstate:SetText(CORE.brandTalent() and L["Talent: learned"] or L["Talent: not learned (no brand timer)"])
     end
   end)
   -- the icon goes gray right away when a spell is unticked
@@ -4439,6 +4543,9 @@ SlashCmdList.DOTWATCH = function(msg)
         .. (TRACK.on(s) and "" or ("  |cff888888" .. L["(not tracked)"] .. "|r"))) end
     end
     if myClass() == "PRIEST" then say("  Devouring Contagion: " .. TRACK.talent .. (db.contagion == true and "" or " (off, experimental)")) end
+    if myClass() == "WARLOCK" then
+      say("  Demonic Brand: talent " .. (CORE.brandTalent() and "yes" or "no") .. ", charges " .. (CORE.brandOn() and "counted (experimental)" or "off"))
+    end
     if myClass() == "WARLOCK" and not known["Siphon Life"] then say("  " .. string.format(L["%s: not known"], LOOK.spell("Siphon Life"))) end
     local noName = {}
     for _, s in ipairs(SPELLS) do if isMine(s) and s.noLoc then noName[#noName + 1] = s.name .. " (" .. s.id .. ")" end end

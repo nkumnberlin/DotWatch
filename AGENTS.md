@@ -96,6 +96,12 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 - Escape: the window handles it itself (`EnableKeyboard` + `OnKeyDown`, `SetPropagateKeyboardInput(true)` for other keys). In combat let all keys through; re-enable on `PLAYER_REGEN_ENABLED`.
 - Confirmations inline in our own window, not StaticPopup.
 
+**Talents and pets (DotProbe 0.7)**
+- The classic talent API (`GetNumTalentTabs`, `GetTalentInfo`) is missing on Forever. Check a talent with `IsPlayerSpell(<talent spell ID>)`. A talent spell's tooltip (`C_Spell.GetSpellDescription`) may show another rank's numbers.
+- Pet casts are readable: `UNIT_SPELLCAST_START/SUCCEEDED` for `pet` with spell ID.
+- Demonic Brand is a debuff on the enemy (`UNIT_AURA added` in Searing Pain's SUCCEEDED frame), not readable in combat. Each empowered pet attack = a fire/shadow `UNIT_COMBAT` hit + `UNIT_AURA updated` on that enemy in the same frame (the Imp's Firebolt hits twice, one update).
+- `C_Spell.IsSpellInRange(id, unit)` is plain (1/0/nil) in combat, also for nameplates (open world); it ignores line of sight.
+
 **Other**
 - Spellbook rescans requested in combat (`SPELLS_CHANGED`) → run after combat ends.
 - AddOns settings entry: `Settings.RegisterCanvasLayoutCategory` + `Settings.RegisterAddOnCategory` at PLAYER_LOGIN, fallback `InterfaceOptions_AddCategory`, all in `pcall`; a small panel with a button that opens our own window (DIALOG strata).
@@ -180,7 +186,7 @@ Source: WoW Forever Tools "Spells by Level" (wowforevertools.vercel.app, data fr
 
 | Class | DoTs (fixed rows) | CC / control (shown while active) |
 |---|---|---|
-| Warlock | Corruption 18 s, Immolate 15 s, Siphon Life 30 s, Bane of Agony 24 s (back-loaded ticks 0.5×/1×/1.5×) | Fear 20 s, Banish 30 s, Subjugate Demon (= Enslave, ID 1098), Death Coil 3 s, curses |
+| Warlock | Corruption 18 s, Immolate 15 s, Siphon Life 30 s, Bane of Agony 24 s (back-loaded ticks 0.5×/1×/1.5×) | Fear 20 s, Banish 30 s, Subjugate Demon (= Enslave, ID 1098), Death Coil 3 s, curses; Demonic Brand 10 s (Demonology talent 1293695, from Searing Pain; rank 3 = pet's next 6 attacks) |
 | Priest | SW:Pain 18 s, Devouring Plague 24 s, Holy Fire 10 s | Shackle Undead 50 s, Chastise 2 s, Silence 5 s, Mind Soothe 15 s |
 | Druid | Moonfire 12 s, Insect Swarm 12 s, Rake 9 s, Lacerate 15 s | Entangling Roots 27 s, Hibernate 40 s, Bash 4 s, Pounce 2 s, Feral Charge |
 | Hunter | Serpent 15 s / Viper 8 s Sting, Lacerate 21 s, Immolation/Explosive Trap | Freezing Trap 20 s, Scare Beast 20 s, Scatter Shot 4 s, Counterattack 5 s |
