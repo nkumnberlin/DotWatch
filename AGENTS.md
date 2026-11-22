@@ -126,7 +126,7 @@ Forever uses the modern (Mainline/"Midnight") UI architecture and its addon rest
 - Spell entries: `id` (rank-1 Forever ID), English `name` as the **saved key**, `loc` = client name, `class`, flags (`cc`, `calm`, `invuln`, `track = false`, group names like `sting`/`poly`). `rebuildDefs()` builds `DEF_BY_NAME`/`SLOT_ORDER` for the player's class only.
 - Rendering through "canvases": the live window and the options preview share `drawCanvas`/`updateCanvas`; `drawCanvas` runs in `pcall`.
 - SavedVariables `DotWatchDB`: settings, `stats[npcID]`, `immune`, `track`, `untracked`, `debug` (last 600 lines) + `debugPrev`.
-- Debug log tags: SPELLBOOK, SENT, IGNORE, START, COMBAT, KEEP, FAIL, EXPIRED, REMOVE, SYNC, LEARNED, HP, LOST?, UNTRACKED, TALENT, CONTAGION, DRAW ERROR, SETTINGS.
+- Debug log tags: SPELLBOOK, SENT, IGNORE, START, COMBAT, KEEP, FAIL, EXPIRED, REMOVE, SYNC, LEARNED, HP, LOST?, UNTRACKED, TALENT, CONTAGION, BRAND, RANGE, SIGHT, DRAW ERROR, SETTINGS.
 - Slash commands: `/dw <cmd>` (`/dp` for DotProbe); every command gets a `help` line.
 - Checks before a commit: compile every file with Lua 5.1 / LuaJIT (`loadstring` also catches the locals limit); logic can be mocked with Python + `lupa`.
 

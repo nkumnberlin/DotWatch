@@ -7,6 +7,7 @@ DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for e
 | | Version | Where |
 |---|---|---|
 | **Current release** | **v0.22.2** | [CurseForge: Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), tag `v0.22.2` |
+| **In testing** | 0.23 | `main`: range dimming and "Out of sight" (not released yet) |
 | **Experimental** (off by default) | since v0.20.3 | Priest: follow Devouring Plague jumps, see [Experimental features](#experimental-features-off-by-default) |
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
@@ -32,6 +33,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 - **Reads your spellbook**: only spells you know get a row.
 - **Tracked spells page**: a checkbox for every spell DotWatch knows for your class, also for spells you haven't learned yet (gray name, faded icon), so you can choose ahead of time. Untracked spells get no timer, no placeholder, no red blink and no nameplate status. "Default list" puts everything back. Holy Fire is off by default (Shadow priests don't cast it).
 - **Traps**: the timer starts on the enemy that sets the trap off, not when you place it.
+- **Out of range, out of sight** (0.23): a DoT row gets pale when that spell can't reach the enemy (Rake's melee range, Moonfire's 30 yards …), the whole enemy when none of your spells reach it or when you can't see it (no target, no nameplate). When a cast fails because the enemy is behind something, the enemy gets an orange "Out of sight" line and stays pale for 3 s or until your next cast reaches it. Options › Display › "Dim out of range" (on by default, light or strong).
 - **Enemies stay until they die**: a living enemy keeps its row and health, even with no DoTs on it, and its name blinks softly red while one of your DoTs is missing. In the open world a row goes away as soon as the enemy's nameplate disappears dead. No blink while you keep it out of the fight on purpose (Banish, Polymorph, Sap, Mind Soothe, Shackle, …). Fear still blinks.
 - **Dungeons**: Forever hides enemy names and IDs there, so DotWatch tells enemies apart by their nameplates, and (0.20.4) by your target, focus, your pet's and your party's targets and the boss frames. Keep enemy nameplates on: DotWatch says so once in a dungeon when they are off. Options › General › "Game nameplates" can switch them on for you ("Always show enemy plates") and show them as far away as the game allows ("Max plate range", 60 yards); both are off by default, change only out of combat and give back your old setting when unticked.
 - **Resist and immune detection**: a resisted DoT starts no timer and shows a red "Resisted" or "Immune" line. A resisted refresh keeps the old timer running. Since 0.21 the enemy's block in the list also flashes twice (red, purple when immune), for crowd control too; Options › Timers › "Flash on resist" switches it to the whole window or off.
@@ -111,6 +113,7 @@ Then start the game or type `/reload`.
 - **Health**: Forever keeps enemy health secret from addons, so DotWatch never compares it in Lua. Health goes straight into game-drawn bars. (The kill skull of 0.15–0.20, which let the game compare health with the damage your DoTs still deal, was removed in 0.21.)
 - **Devouring Plague jumps** (experimental): the game doesn't say where a plague jumps. DotWatch takes the enemies whose auras changed right around the death as candidates and waits for a shadow tick on them to confirm.
 - **Languages**: every spell has its spell ID; the game names it in its own language, and that name is matched against casts, the spellbook and auras. Saved settings (colors, statistics, immunities, tracked spells) stay keyed by the English name, so they survive a language change.
+- **Range**: `C_Spell.IsSpellInRange(spell, unit)` stays readable in combat, also for nameplates, every 0.2 s per row. It ignores line of sight; that only shows up as a failed cast together with the game's "Target not in line of sight" error.
 - **Banished enemies** are immune to everything; an "Immune" there is not stored as an immunity of that enemy type.
 - **Secret values**: the window shows game-drawn values (health), so the game also keeps the window's own position secret. DotWatch keeps its own position numbers and drags the window itself.
 - **No click-to-cast**: Forever lets an addon button reach only your current target (macro conditionals don't see nameplate units), so the target bar was removed in 0.9.
@@ -123,6 +126,7 @@ Then start the game or type `/reload`.
 - Freezing Trap starts on the first new debuff an enemy gets after the trap was placed; another player's debuff at that moment can set it off in DotWatch.
 - Devouring Plague jumps are a guess until the first shadow tick confirms them; another player's debuff or shadow damage at that moment can mislead it.
 - Classes other than Warlock and Priest are not much tested in game yet.
+- "Out of sight" only appears after a cast of yours failed on line of sight; DotWatch can't see a pillar coming. Range dimming in dungeons is not tested yet.
 - Tick marks on the nameplate mini bars are skipped when the game keeps the plate's width secret.
 - On German clients the tooltip wording (DoT durations) is from Classic Era and not yet checked on Forever. Crowd-control durations on non-English clients come from DotWatch's duration table.
 - Russian and Chinese interface texts need a game client whose font has those letters.

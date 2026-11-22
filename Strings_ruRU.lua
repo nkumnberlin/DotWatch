@@ -183,7 +183,7 @@ ns.STRINGS.ruRU = {
   ["The normal size."] = "Обычный размер.",
   ["Large"] = "Большой",
   ["Easier to read from a distance."] = "Легче читать издалека.",
-  ["Extra large"] = "Очень большой",
+  ["Extra large"] = "Огромный", -- 0.23: short, the sizes sit in two columns
   ["For high resolutions or big screens."] = "Для высоких разрешений или больших экранов.",
   ["Soft click"] = "Тихий щелчок",
   ["Page turn"] = "Перелистывание",
@@ -292,4 +292,12 @@ ns.STRINGS.ruRU = {
   ["Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting."] = "Включает игровые индикаторы здоровья противников (как клавиша V) при входе и в каждом подземелье. В подземельях DotWatch различает противников по их индикаторам. Не в бою: тогда после боя. Если снять галочку, вернётся ваша прежняя настройка.",
   ["Max plate range"] = "Макс. дальность индикаторов",
   ["Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting."] = "Показывает индикаторы так далеко, как позволяет игра (60 м), чтобы видеть противников, на которых вы вешаете DoT издалека. Не в бою: тогда после боя. Если снять галочку, вернётся ваша прежняя настройка.",
+  -- 0.23: range dimming, line of sight
+  ["Dim out of range"] = "Тусклее вне досягаемости",
+  ["An enemy or a DoT row gets pale when that spell can't reach it. The whole enemy also gets pale when you can't see it (no target, no nameplate) and for 3 s after a cast failed on line of sight."] = "Противник или строка DoT бледнеет, когда заклинание не достаёт до цели. Весь противник тоже бледнеет, если его не видно (не цель, нет индикатора) и на 3 с после того, как заклинание не прошло из-за линии обзора.",
+  ["Light"] = "Слабо",
+  ["A little paler."] = "Немного бледнее.",
+  ["Strong"] = "Сильно",
+  ["Much paler."] = "Намного бледнее.",
+  ["Out of sight"] = "Вне поля зрения",
 }

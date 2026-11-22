@@ -291,4 +291,12 @@ ns.STRINGS.deDE = {
   ["Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting."] = "Schaltet die Gegner-Namensplaketten des Spiels ein (wie Taste V), beim Einloggen und in jedem Dungeon. In Dungeons unterscheidet DotWatch Gegner an ihren Namensplaketten. Nicht im Kampf: dann nach dem Kampf. Abhaken stellt deine alte Einstellung wieder her.",
   ["Max plate range"] = "Max. Plakettenreichweite",
   ["Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting."] = "Zeigt Namensplaketten so weit, wie das Spiel erlaubt (60 Meter), damit du auch Gegner siehst, die du aus der Ferne dottest. Nicht im Kampf: dann nach dem Kampf. Abhaken stellt deine alte Einstellung wieder her.",
+  -- 0.23: range dimming, line of sight
+  ["Dim out of range"] = "Außer Reichweite blass",
+  ["An enemy or a DoT row gets pale when that spell can't reach it. The whole enemy also gets pale when you can't see it (no target, no nameplate) and for 3 s after a cast failed on line of sight."] = "Ein Gegner oder eine DoT-Zeile wird blass, wenn der Zauber ihn nicht erreicht. Der ganze Gegner wird auch blass, wenn du ihn nicht siehst (kein Ziel, keine Namensplakette) und für 3 s, nachdem ein Zauber an der Sichtlinie gescheitert ist.",
+  ["Light"] = "Leicht",
+  ["A little paler."] = "Etwas blasser.",
+  ["Strong"] = "Stark",
+  ["Much paler."] = "Deutlich blasser.",
+  ["Out of sight"] = "Nicht in Sicht",
 }

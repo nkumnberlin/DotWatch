@@ -58,7 +58,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.22.2"
+local VERSION = "0.23"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -852,9 +852,106 @@ local function startDot(info, guid, name, t, how, jump, durOverride)
   end
   dbg(string.format("START %s on %s [%s] %ds%s%s", info.name, m.name, short(m.guid), dur,
     prev and " (refresh)" or "", how and (" " .. how) or ""))
-  if not jump then C_Timer.After(0.1, function() evaluate(m, d) end) end
+  if not jump then
+    C_Timer.After(0.1, function() evaluate(m, d) end)
+    CORE.sightClear(m) -- 0.23: the cast reached it, so it is in sight
+  end
   dirty = true
   return d
+end
+
+---------------------------------------------------------------------------
+-- 0.23: range and line of sight. DotProbe 0.7: C_Spell.IsSpellInRange answers plain 1/0/nil in
+-- combat, also for nameplates, but ignores line of sight. Line of sight only shows up as a
+-- failed cast + the game's "Target not in line of sight" error.
+---------------------------------------------------------------------------
+CORE.DIM = { light = 0.55, strong = 0.3 }
+CORE.rangeName = {} -- spell ID -> name, for the fallback by name
+CORE.sight = { errAt = 0, failAt = 0 }
+CORE.SIGHT_TIME = 3
+function CORE.dimOn() return db and db.rangeDim ~= false end
+function CORE.dimK() return CORE.DIM[db.rangeDimStrength or "light"] or CORE.DIM.light end
+
+-- true = in range, false = out of range, nil = no answer (no range, unknown spell, secret)
+function CORE.inRange(id, unit)
+  if not (C_Spell and C_Spell.IsSpellInRange) or type(id) ~= "number" or id <= 0 then return nil end
+  local r = plain(C_Spell.IsSpellInRange, id, unit)
+  if r == nil then
+    local name = CORE.rangeName[id]
+    if name == nil then
+      name = C_Spell.GetSpellName and str(plain(C_Spell.GetSpellName, id)) or false
+      CORE.rangeName[id] = name
+    end
+    if name then r = plain(C_Spell.IsSpellInRange, name, unit) end
+  end
+  if r == true or r == 1 then return true end
+  if r == false or r == 0 then return false end
+  return nil
+end
+
+-- from scan(), after the unit tokens are known: d.dim = this row is pale, m.away = the whole enemy
+-- (no unit token = not in view, out of sight, or out of range of every spell we have for it)
+function CORE.rangeScan(m, t)
+  if m.losUntil and m.losUntil <= t then m.losUntil = nil end
+  local away = m.unit == nil or m.losUntil ~= nil
+  local anyIn, anyOut = false, false
+  if not away then
+    for _, d in pairs(m.dots) do
+      local def = d.info.def
+      local r = nil
+      if not def.cast and not def.trap then r = CORE.inRange(d.info.id, m.unit) end
+      d.far = r == false
+      if r then anyIn = true elseif r == false then anyOut = true end
+    end
+    for _, slot in ipairs(SLOT_ORDER) do
+      local _, id = slotSpell(slot)
+      local r = CORE.inRange(id, m.unit)
+      if r then anyIn = true elseif r == false then anyOut = true end
+    end
+    if anyOut and not anyIn then away = true end
+  end
+  if away ~= (m.away or false) then
+    dbg("RANGE " .. m.name .. " [" .. short(m.guid) .. "]: " .. (away and (m.unit == nil and "not in view"
+      or m.losUntil and "out of sight" or "out of range") or "back in range"))
+  end
+  m.away = away
+  for _, d in pairs(m.dots) do d.dim = away or d.far or false end
+end
+
+function CORE.dropSightFlash(m)
+  for i = #m.flash, 1, -1 do if m.flash[i].los then table.remove(m.flash, i) end end
+end
+
+function CORE.sightMark(key, t)
+  local m = key and mobs[key]
+  if not m then return end
+  CORE.dropSightFlash(m)
+  m.flash[#m.flash + 1] = { text = L["Out of sight"], r = 1, g = 0.6, b = 0.2, expires = t + CORE.SIGHT_TIME, los = true }
+  m.losUntil = t + CORE.SIGHT_TIME
+  dirty = true
+  dbg("SIGHT " .. m.name .. " [" .. short(key) .. "]: cast failed, not in line of sight")
+end
+
+-- a cast of ours reached this enemy: it is in sight again
+function CORE.sightClear(m)
+  if not m.losUntil then return end
+  m.losUntil = nil
+  CORE.dropSightFlash(m)
+  dirty = true
+end
+
+-- UI_ERROR_MESSAGE with the line-of-sight text and UNIT_SPELLCAST_FAILED come in the same
+-- moment, in either order
+function CORE.sightError(t)
+  local s = CORE.sight
+  s.errAt = t
+  if s.failKey and t - s.failAt < 0.25 then CORE.sightMark(s.failKey, t) s.failKey = nil end
+end
+function CORE.sightFail(key, t)
+  local s = CORE.sight
+  if not key then return end
+  if t - s.errAt < 0.25 then CORE.sightMark(key, t) s.errAt = 0 return end
+  s.failAt, s.failKey = t, key
 end
 
 local function onSent(destName, castGUID, spellID)
@@ -954,21 +1051,29 @@ TRACK.added = {}  -- key -> { t, name, added, updated, hostile }: last aura chan
 TRACK.open = {}   -- jumps still looking for enemies: { t, from, src, left, info, got }
 TRACK.talent = "unknown" -- "yes" / "no" / "unknown" (talent tree not readable or other language)
 
+-- 0.23: the classic talent API (GetTalentInfo) is missing on Forever (DotProbe 0.7), so the old
+-- check always said "unknown". A learned talent is a player spell: find its ID by name (the
+-- talent's ID is not in any database yet; known ones go into TRACK.CONTAGION_IDS) and ask
+-- IsPlayerSpell. No answer stays "unknown" (the jumps then still work when ticked).
+TRACK.CONTAGION_IDS = {}
 function TRACK.scanTalent()
-  local state = "unknown"
-  if GetNumTalentTabs and GetNumTalents and GetTalentInfo then
-    for tab = 1, num(plain(GetNumTalentTabs)) or 0 do
-      for i = 1, num(plain(GetNumTalents, tab)) or 0 do
-        -- classic order: name, icon, tier, column, rank, maxRank
-        local ok, name, _, _, _, rank = pcall(GetTalentInfo, tab, i)
-        name, rank = ok and str(name), ok and num(rank)
-        if name and (name == "Devouring Contagion" or name == L["Devouring Contagion"]) then
-          state = (rank or 0) > 0 and "yes" or "no"
-        end
+  local state, found = "unknown", nil
+  for _, id in ipairs(TRACK.CONTAGION_IDS) do
+    if plain(IsPlayerSpell, id) == true then state, found = "yes", id end
+  end
+  if state == "unknown" and C_Spell and C_Spell.GetSpellInfo then
+    for _, name in ipairs({ L["Devouring Contagion"], "Devouring Contagion" }) do
+      local info = plain(C_Spell.GetSpellInfo, name)
+      local id = type(info) == "table" and num(info.spellID)
+      if id and state == "unknown" then
+        found = id
+        state = plain(IsPlayerSpell, id) == true and "yes" or "no"
       end
     end
   end
-  if state ~= TRACK.talent then dbg("TALENT Devouring Contagion: " .. state) end
+  if state ~= TRACK.talent then
+    dbg("TALENT Devouring Contagion: " .. state .. (found and (" (spell " .. found .. ")") or ""))
+  end
   TRACK.talent = state
 end
 
@@ -1284,6 +1389,7 @@ local function scan()
         end
       end
     end
+    CORE.rangeScan(m, t) -- 0.23: range dimming, not in view, out of sight
     TRACK.check(m, g, t) -- 0.20: guessed Devouring Plague jumps
     for id, d in pairs(m.dots) do
       if d.expires <= t then
@@ -1368,6 +1474,9 @@ end
 function LOOK.isLight(c)
   return (0.299 * c[1] + 0.587 * c[2] + 0.114 * c[3]) > 0.6
 end
+-- 0.23: alpha factor for an enemy (m.away) and a row (d.dim) out of range, view or sight
+function LOOK.dimMob(m) return (m and m.away and CORE.dimOn()) and CORE.dimK() or 1 end
+function LOOK.dimRow(d) return (d.dim and CORE.dimOn()) and CORE.dimK() or 1 end
 -- 0.55..1 pulse while a DoT is about to run out (refresh warning)
 function LOOK.pulse(d, left, t)
   if d.lost or not db then return 1 end
@@ -2703,6 +2812,11 @@ local function updateCanvas(canvas, t)
         r, g, b = r + (1 - r) * k, g + (0.25 - g) * k, b + (0.2 - b) * k
       end
       h:SetTextColor(r, g, b)
+      -- 0.23: an enemy out of range / view / sight is pale (name, health)
+      local k = LOOK.dimMob(h.mob)
+      h:SetAlpha(k)
+      h.hp:SetAlpha(k)
+      if h.hpbar then h.hpbar:SetAlpha(k) end
     end
   end
   for _, b in ipairs(canvas.bars) do
@@ -2713,7 +2827,7 @@ local function updateCanvas(canvas, t)
       b:SetMinMaxValues(0, total > 0 and total or 1)
       b:SetValue(left > 0 and left or 0)
       timeText(b.time, d, left)
-      b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t))
+      b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t) * LOOK.dimRow(d))
       local k = LOOK.ccWarn(d, left, t)
       if k > 0 or b.ccTint then LOOK.tintBar(b, d, k) b.ccTint = k > 0 end
       placeTicks(b, b, d, t, total)
@@ -2729,7 +2843,7 @@ local function updateCanvas(canvas, t)
       b.bar:SetMinMaxValues(0, total > 0 and total or 1)
       b.bar:SetValue(left > 0 and left or 0)
       timeText(b.time, d, left)
-      b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t))
+      b:SetAlpha((d.confirmed and 1 or 0.75) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t) * LOOK.dimRow(d))
       local k = LOOK.ccWarn(d, left, t)
       if k > 0 or b.ccTint then LOOK.tintBar(b.bar, d, k) b.ccTint = k > 0 end
       placeTicks(b, b.bar, d, t, total)
@@ -2743,7 +2857,7 @@ local function updateCanvas(canvas, t)
       if d and c:IsShown() then
         local left = d.expires - t
         timeText(c.time, d, left)
-        c:SetAlpha((d.confirmed and 1 or 0.8) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t))
+        c:SetAlpha((d.confirmed and 1 or 0.8) * (d.lost and 0.6 or 1) * LOOK.pulse(d, left, t) * LOOK.dimRow(d))
         local k = LOOK.ccWarn(d, left, t)
         if c.border and (k > 0 or c.ccTint) then
           c.border:SetColorTexture(k, 0.12 * k, 0.08 * k, 1) -- black frame turns red
@@ -2985,7 +3099,7 @@ local function reg(e) pcall(ev.RegisterEvent, ev, e) end
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_TARGET_CHANGED",
   "UNIT_COMBAT", "UNIT_AURA", "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB", "CHARACTER_POINTS_CHANGED",
   "PLAYER_TALENT_UPDATE", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
-  "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "UNIT_PET", "GROUP_ROSTER_UPDATE", "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_ENTERING_WORLD" }) do
+  "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "UNIT_PET", "GROUP_ROSTER_UPDATE", "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_ENTERING_WORLD", "UI_ERROR_MESSAGE" }) do
   reg(e)
 end
 for _, e in ipairs({ "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED",
@@ -3054,7 +3168,18 @@ ev:SetScript("OnEvent", function(_, event, ...)
       or event == "UNIT_SPELLCAST_INTERRUPTED" then
     local _, castGUID = ...
     castGUID = str(castGUID)
+    local p = castGUID and pending[castGUID]
     if castGUID then pending[castGUID] = nil end
+    if event ~= "UNIT_SPELLCAST_INTERRUPTED" then
+      -- 0.23: a line-of-sight error at the same moment marks this enemy "out of sight"
+      local key = p and p.guid
+      if not key and plain(UnitCanAttack, "player", "target") == true then key = keyOf("target") end
+      CORE.sightFail(key, now())
+    end
+  elseif event == "UI_ERROR_MESSAGE" then
+    local _, msg = ...
+    msg = str(msg)
+    if msg and msg == str(SPELL_FAILED_LINE_OF_SIGHT) then CORE.sightError(now()) end
   elseif event == "UNIT_COMBAT" then
     onUnitCombat(...)
   elseif event == "UNIT_AURA" then
@@ -3393,6 +3518,9 @@ local function buildSample()
     mob("preview-C", "Dark Iron Taskmaster", 1, 18, 3, { { s2, len(s2) * 0.58, len(s2) } }, LOOK.spell(s3) .. ": " .. L["Resisted"]),
   }
   list[3].fakeFlash = "resist" -- 0.21: the preview's resisted enemy flashes every few seconds
+  -- 0.23: the second enemy is out of range (pale while "Dim out of range" is on)
+  list[2].away = true
+  for _, d in pairs(list[2].dots) do d.dim = true end
   if known["Siphon Life"] and DEF_BY_NAME["Siphon Life"] then
     local id, d = dot("Siphon Life", 22, 30)
     list[1].dots[id] = d
@@ -4207,7 +4335,16 @@ local function buildOptions()
   hpRadio("pct", "Percent", "The number next to the name.", 50, ry)
   hpRadio("bar", "Bar", "A thin health bar under the name instead of the number.", 140, ry)
   hpRadio("barpct", "Bar + percent", "The health bar with the number in it.", 50, ry - 22)
-  ry = ry - 52
+  ry = ry - 50
+  -- 0.23: range dimming (enemy and rows), with the strength on the next line
+  makeCheck(dp, "Dim out of range", "An enemy or a DoT row gets pale when that spell can't reach it. The whole enemy also gets pale when you can't see it (no target, no nameplate) and for 3 s after a cast failed on line of sight.",
+    function() return db.rangeDim ~= false end, function(v) db.rangeDim = v end):SetPoint("TOPLEFT", 24, ry)
+  ry = ry - 24
+  makeRadio(dp, "Light", "A little paler.", "light", function() return db.rangeDimStrength or "light" end,
+    function(v) db.rangeDimStrength = v end):SetPoint("TOPLEFT", 50, ry)
+  makeRadio(dp, "Strong", "Much paler.", "strong", function() return db.rangeDimStrength or "light" end,
+    function(v) db.rangeDimStrength = v end):SetPoint("TOPLEFT", 140, ry)
+  ry = ry - 30
   makeSection(dp, "Window size", ry, 24, COL)
   ry = ry - 24
   local function nearestSize()
@@ -4218,10 +4355,10 @@ local function buildOptions()
     end
     return best
   end
-  for _, sz in ipairs(SIZES) do
+  -- 0.23: two columns (room for the range option above)
+  for i, sz in ipairs(SIZES) do
     makeRadio(dp, sz[2], sz[3], sz[1], nearestSize,
-      function(v) db.scale = v applySettings() end):SetPoint("TOPLEFT", 28, ry)
-    ry = ry - 24
+      function(v) db.scale = v applySettings() end):SetPoint("TOPLEFT", i % 2 == 1 and 28 or 128, ry - math.floor((i - 1) / 2) * 24)
   end
 
   -- preview box on the right

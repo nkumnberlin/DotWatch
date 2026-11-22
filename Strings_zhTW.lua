@@ -294,4 +294,12 @@ ns.STRINGS.zhTW = {
   ["Turns the game's enemy nameplates on (like pressing V) at login and in every dungeon. In dungeons DotWatch tells enemies apart by their nameplates. Not in combat: then after the fight. Unticking gives back your old setting."] = "在登入時和每個地城中開啟遊戲的敵方名條（相當於按 V）。在地城中，DotWatch 依靠名條區分敵人。戰鬥中無法變更：將在戰鬥結束後變更。取消勾選會恢復你原本的設定。",
   ["Max plate range"] = "最大名條距離",
   ["Shows nameplates as far away as the game allows (60 yards), so you still see enemies you dot from far away. Not in combat: then after the fight. Unticking gives back your old setting."] = "在遊戲允許的最遠距離（60碼）顯示名條，讓你遠距離上 DoT 時仍能看到敵人。戰鬥中無法變更：將在戰鬥結束後變更。取消勾選會恢復你原本的設定。",
+  -- 0.23: range dimming, line of sight
+  ["Dim out of range"] = "超出範圍時變淡",
+  ["An enemy or a DoT row gets pale when that spell can't reach it. The whole enemy also gets pale when you can't see it (no target, no nameplate) and for 3 s after a cast failed on line of sight."] = "法術搆不到時，該敵人或該 DoT 行會變淡。看不到敵人時（不是目標、沒有名條），以及施法因視線受阻失敗後的 3 秒內，整個敵人也會變淡。",
+  ["Light"] = "輕微",
+  ["A little paler."] = "稍微變淡。",
+  ["Strong"] = "明顯",
+  ["Much paler."] = "明顯變淡。",
+  ["Out of sight"] = "視線外",
 }
