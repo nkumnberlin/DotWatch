@@ -21,6 +21,7 @@ ns.STRINGS.ruRU = {
   ["%s loaded. /dw for options, /dw help for commands."] = "%s загружен. /dw — настройки, /dw help — команды.",
   ["Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s"] = "Бой %d:%02d — DoT наложено: %d, обновлено: %d, сопротивление: %d, невосприимчивость: %d%s",
   [", %d lost?"] = ", слетело?: %d",
+  ["... and %d more"] = "... и ещё %d",
   ["Resisted"] = "Сопротивление",
   ["Test timers shown. They run out on their own or end when you leave combat."] = "Показаны тестовые таймеры. Они истекут сами или исчезнут после выхода из боя.",
   ["nothing found yet"] = "пока ничего не найдено",

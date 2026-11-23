@@ -21,6 +21,7 @@ ns.STRINGS.zhCN = {
   ["%s loaded. /dw for options, /dw help for commands."] = "%s 已加载。输入 /dw 打开选项，/dw help 查看命令。",
   ["Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s"] = "战斗 %d:%02d - 施放 %d 个持续伤害，刷新 %d，抵抗 %d，免疫 %d%s",
   [", %d lost?"] = "，%d 个丢失？",
+  ["... and %d more"] = "……还有 %d 条",
   ["Resisted"] = "抵抗",
   ["Test timers shown. They run out on their own or end when you leave combat."] = "已显示测试计时器。它们会自行结束，或在你脱离战斗时消失。",
   ["nothing found yet"] = "尚未找到",

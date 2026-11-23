@@ -23,6 +23,7 @@ ns.STRINGS.zhTW = {
   ["%s loaded. /dw for options, /dw help for commands."] = "%s 已載入。輸入 /dw 開啟選項，/dw help 查看指令。",
   ["Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s"] = "戰鬥 %d:%02d - 施放 %d 個持續傷害，刷新 %d，抵抗 %d，免疫 %d%s",
   [", %d lost?"] = "，%d 個丟失？",
+  ["... and %d more"] = "……還有 %d 則",
   ["Resisted"] = "抵抗",
   ["Test timers shown. They run out on their own or end when you leave combat."] = "已顯示測試計時器。它們會自行結束，或在你脫離戰鬥時消失。",
   ["nothing found yet"] = "尚未找到",

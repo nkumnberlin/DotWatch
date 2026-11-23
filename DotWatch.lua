@@ -58,7 +58,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.23"
+local VERSION = "0.23.1"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -310,6 +310,22 @@ end
 -- the addon's table (languages) and the tooltip duration reader.
 local CORE = {} -- one local: the main chunk is at Lua's 200-local limit
 CORE.ns = select(2, ...) -- 0.16: the addon's shared table (Locale*.lua put their readers in it)
+
+-- 0.23.1: chat lines from combat wait until the fight is over. Printing in a dungeon fight
+-- started Blizzard's chat-tab fade from our (tainted) code; the tab alpha is secret there,
+-- so FrameUtil.lua errored "tainted by DotWatch" (Attune and BetterForeverChat hit the same).
+CORE.held = {}
+function CORE.sayLater(msg)
+  if not InCombatLockdown() then say(msg) return end
+  CORE.held[#CORE.held + 1] = msg
+end
+function CORE.flushHeld()
+  local list = CORE.held
+  if #list == 0 then return end
+  CORE.held = {}
+  for i = 1, math.min(#list, 8) do say(list[i]) end
+  if #list > 8 then say(string.format(L["... and %d more"], #list - 8)) end
+end
 
 -- 0.16: duration from a tooltip in any client language: the English patterns first, then
 -- Locale*.lua (German, Russian, Simplified/Traditional Chinese) for DoTs. Crowd control keeps
@@ -590,7 +606,7 @@ function TRACK.plateHint()
   local get = (C_CVar and C_CVar.GetCVar) or GetCVar
   if str(plain(get, "nameplateShowEnemies")) == "0" then
     TRACK.hinted = true
-    say(L["Enemy nameplates are off. In dungeons DotWatch tells enemies apart by their nameplates: press V, or tick \"Always show enemy plates\" in /dw > General."])
+    CORE.sayLater(L["Enemy nameplates are off. In dungeons DotWatch tells enemies apart by their nameplates: press V, or tick \"Always show enemy plates\" in /dw > General."])
     dbg("HINT enemy nameplates are off")
   end
 end
@@ -739,7 +755,7 @@ local function failDot(m, d, action)
   end
   dbg("FAIL " .. d.info.name .. " on " .. m.name .. " [" .. short(m.guid) .. "]: " .. action ..
     (banished and " (banished, not stored)" or "") .. (d.prev and " (old timer kept)" or ""))
-  if db.chat then say(string.format(L["|cffff5555%s %s|r on %s"], LOOK.spell(d.info), label:lower(), m.hidden and L["your target"] or m.name)) end
+  if db.chat then CORE.sayLater(string.format(L["|cffff5555%s %s|r on %s"], LOOK.spell(d.info), label:lower(), m.hidden and L["your target"] or m.name)) end
   if action == "IMMUNE" and not banished then
     local npc = npcID(m.guid)
     if npc then
@@ -3456,6 +3472,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         math.floor(secs / 60), secs % 60, fight.casts, fight.refreshes, fight.resisted, fight.immune,
         fight.lost > 0 and string.format(L[", %d lost?"], fight.lost) or ""))
     end
+    CORE.flushHeld()
     dirty = true
   elseif event == "PLAYER_LOGIN" then
     scanSpellbook("login")

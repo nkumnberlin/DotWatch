@@ -20,6 +20,7 @@ ns.STRINGS.deDE = {
   ["%s loaded. /dw for options, /dw help for commands."] = "%s geladen. /dw für die Optionen, /dw help für die Befehle.",
   ["Fight %d:%02d - %d DoTs cast, %d refreshed, %d resisted, %d immune%s"] = "Kampf %d:%02d - %d DoTs gewirkt, %d erneuert, %d widerstanden, %d immun%s",
   [", %d lost?"] = ", %d weg?",
+  ["... and %d more"] = "... und %d weitere",
   ["Resisted"] = "Widerstanden",
   ["Test timers shown. They run out on their own or end when you leave combat."] = "Test-Timer angezeigt. Sie laufen von selbst ab oder enden, wenn du den Kampf verlässt.",
   ["nothing found yet"] = "noch nichts gefunden",
