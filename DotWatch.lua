@@ -18,6 +18,9 @@
 --  * A pet miss in the same frame no longer cancels a DoT that did land.
 --  * Debug log in SavedVariables (/dw debug shows it live in chat).
 --
+-- New in 0.24: Shadow Vulnerability (warlock, Improved Shadow Bolt): a Shadow Bolt crit starts a
+-- 12 s timer on that enemy. Experimental, off by default (Tracked spells page): the crit is guessed
+-- from a CRITICAL shadow hit on that enemy shortly after the bolt. VULN lines in the debug log.
 -- New in 0.22.2: the Demonic Brand charge counter is on by default (Nico tested it), no longer experimental.
 -- New in 0.22.1: a running Demonic Brand is always the first row of its enemy (first column in Table).
 -- New in 0.22: Demonic Brand (warlock talent): Searing Pain starts a 10 s timer on that enemy;
@@ -58,7 +61,7 @@
 
 local ADDON_NAME = ...
 local L = select(2, ...).L -- 0.18: interface texts in the chosen language (Strings*.lua)
-local VERSION = "0.23.1"
+local VERSION = "0.24"
 
 local issecret = issecretvalue or function() return false end
 local db
@@ -140,6 +143,12 @@ local SPELLS = {
   -- Shown while active; only with the talent learned. Charges: see CORE.brandSignal.
   { name = "Demonic Brand", id = 1293695, cast = 5676, castName = "Searing Pain", dur = 10,
     color = { 1.00, 0.35, 0.15 }, brand = true, group = "brand" }, -- group: another Searing Pain rank replaces it
+  -- 0.24: Improved Shadow Bolt (Destruction talent). On Forever a Shadow Bolt crit makes the target
+  -- take more Shadow damage from you for 12 s (personal; Classic's 4-hit limit is gone). Started by
+  -- the bolt's CRITICAL hit, not by the cast (see CORE.vulnHit). Experimental: off by default.
+  -- id = Classic's debuff (rank 1), for the name and icon; Forever's own ID is not confirmed yet.
+  { name = "Shadow Vulnerability", id = 17794, cast = 686, castName = "Shadow Bolt", dur = 12,
+    color = { 0.55, 0.35, 0.90 }, vuln = true, group = "vuln", track = false },
 
   -- 0.13: the other classes (WoW Forever data, see project doc class-dots-cc.md).
   -- Not tracked on purpose: random procs, combo-point finishers, channels, self-centered AoE.
@@ -365,6 +374,7 @@ local function spellInfo(id)
   if def.cc and db and db.trackCC == false then return nil end
   if not TRACK.on(def) then return nil end -- 0.20: unticked on the Spells page (not cached)
   if def.brand and not CORE.brandTalent() then return nil end -- 0.22: talent not learned (not cached)
+  if def.vuln and CORE.vulnState == "no" then return nil end -- 0.24: Improved Shadow Bolt not learned
   local desc = C_Spell and C_Spell.GetSpellDescription and str(plain(C_Spell.GetSpellDescription, id))
   -- 0.22: a spell started by another cast keeps its own name, icon and table duration
   local descDur = not def.cast and CORE.readDuration(desc, def) or nil
@@ -466,6 +476,7 @@ local function scanSpellbook(why)
   -- spells seen in casts count as known too (in case the book scan misses one)
   for name in pairs(db.castKnown or {}) do if not known[name] then known[name] = true end end
   if myClass() == "PRIEST" then TRACK.scanTalent() end -- 0.20: Devouring Contagion
+  if myClass() == "WARLOCK" then CORE.scanVulnTalent() end -- 0.24: Improved Shadow Bolt
   local list = {}
   for _, s in ipairs(SPELLS) do
     if known[s.name] then list[#list + 1] = s.name .. "=" .. tostring(known[s.name]) end
@@ -877,6 +888,115 @@ local function startDot(info, guid, name, t, how, jump, durOverride)
 end
 
 ---------------------------------------------------------------------------
+-- 0.24: Shadow Vulnerability (Improved Shadow Bolt). Forever: a Shadow Bolt crit makes the target
+-- take more Shadow damage from you for 12 s, no hit limit. The cast doesn't say whether it crits
+-- and auras are closed in combat, but UNIT_COMBAT names a CRITICAL hit in combat (DotProbe 0.7
+-- log). So a bolt of ours is "on its way" to its enemy (CORE.vulnArm); the first shadow hit on
+-- that enemy within VULN_FLIGHT s that is no tick of our DoTs is the bolt landing. CRITICAL =
+-- vulnerable for 12 s (a new crit restarts it). A guess: a pet's or another warlock's shadow
+-- crit in that moment looks the same. Experimental, off by default. VULN lines in the debug log.
+---------------------------------------------------------------------------
+CORE.VULN_FLIGHT = 3 -- s from SUCCEEDED to the hit (travel time over 30+ yd)
+CORE.VULN_TALENT = { 17793, 17796, 17801, 17802, 17803 } -- Classic's ranks; Forever's not confirmed
+CORE.bolts = {} -- enemy key -> list of { t, info, name }: our bolts still on their way
+CORE.vulnState = "unknown" -- talent: "yes" / "no" / "unknown" (unknown = tracked anyway when ticked)
+
+function CORE.scanVulnTalent()
+  local state, found = "unknown", nil
+  for _, id in ipairs(CORE.VULN_TALENT) do
+    if state == "unknown" and plain(IsPlayerSpell, id) == true then state, found = "yes", id end
+  end
+  if state == "unknown" and C_Spell and C_Spell.GetSpellInfo then
+    local cl = C_Spell.GetSpellName and str(plain(C_Spell.GetSpellName, CORE.VULN_TALENT[1]))
+    for _, name in ipairs({ cl or "Improved Shadow Bolt", "Improved Shadow Bolt" }) do
+      local info = plain(C_Spell.GetSpellInfo, name)
+      local id = type(info) == "table" and num(info.spellID)
+      if id and state == "unknown" then
+        found = id
+        state = plain(IsPlayerSpell, id) == true and "yes" or "no"
+      end
+    end
+  end
+  if state ~= CORE.vulnState then
+    dbg("TALENT Improved Shadow Bolt: " .. state .. (found and (" (spell " .. found .. ")") or ""))
+    wipe(spellCache)
+  end
+  CORE.vulnState = state
+end
+
+-- a tick of one of our DoTs of this school on enemy m at time t?
+function CORE.ownTick(m, t, school)
+  for _, d in pairs(m.dots) do
+    local iv = d.info.def.tick
+    if iv and d.info.def.school == school and t > d.start and t <= d.expires + 0.2 then
+      local k = (t - d.start) / iv
+      if k >= 0.5 and math.abs(k - math.floor(k + 0.5)) * iv <= 0.15 then return d end
+    end
+  end
+end
+
+-- our Shadow Bolt left for enemy `key` (from onSent/onSucceeded instead of startDot)
+function CORE.vulnArm(info, key, name, t)
+  local list = CORE.bolts[key] or {}
+  CORE.bolts[key] = list
+  list[#list + 1] = { t = t, info = info, name = name }
+  dbg(string.format("VULN Shadow Bolt on its way to %s [%s]", tostring(name), short(key)))
+end
+
+-- a shadow hit (UNIT_COMBAT WOUND, school 32) on enemy `key` while a bolt of ours is on its way
+function CORE.vulnHit(key, flags)
+  local list = CORE.bolts[key]
+  local t = now()
+  if not list or list.lastT == t then return end -- the same hit via a second unit token
+  while list[1] and t - list[1].t > CORE.VULN_FLIGHT do
+    dbg(string.format("VULN no hit seen for the bolt on [%s]", short(key)))
+    table.remove(list, 1)
+  end
+  local b = list[1]
+  local m = mobs[key]
+  if b and m then
+    local tick = CORE.ownTick(m, t, 32)
+    if tick then
+      dbg(string.format("VULN skip on [%s]: tick of %s", short(key), tick.info.name))
+      return
+    end
+  end
+  if b then
+    list.lastT = t
+    table.remove(list, 1)
+  end
+  if not list[1] then CORE.bolts[key] = nil end
+  if not b then return end
+  local crit = flags == "CRITICAL"
+  C_Timer.After(0.05, function()
+    local a = lastAura[key]
+    dbg(string.format("VULN bolt hit [%s] %+.2fs: %s, aura change %s", short(key), t - b.t,
+      crit and "CRITICAL" or tostring(flags or "normal"), (a and math.abs(a - t) <= SAME_FRAME) and "same frame" or "none"))
+  end)
+  if crit then
+    local d = startDot(b.info, key, b.name, t, "(Shadow Bolt crit)", true)
+    d.confirmed = true
+  end
+end
+
+-- from scan(): drop bolts that never reached anyone (resisted, enemy out of view)
+function CORE.boltPrune(t)
+  for key, list in pairs(CORE.bolts) do
+    while list[1] and t - list[1].t > CORE.VULN_FLIGHT do
+      dbg(string.format("VULN no hit seen for the bolt on [%s]", short(key)))
+      table.remove(list, 1)
+    end
+    if not list[1] then CORE.bolts[key] = nil end
+  end
+end
+
+-- a cast of ours reached its enemy: start its timer (a Shadow Bolt only waits for its hit)
+function CORE.begin(info, guid, name, t, how)
+  if info.def.vuln then return CORE.vulnArm(info, guid, name, t) end
+  return startDot(info, guid, name, t, how)
+end
+
+---------------------------------------------------------------------------
 -- 0.23: range and line of sight. DotProbe 0.7: C_Spell.IsSpellInRange answers plain 1/0/nil in
 -- combat, also for nameplates, but ignores line of sight. Line of sight only shows up as a
 -- failed cast + the game's "Target not in line of sight" error.
@@ -982,7 +1102,7 @@ local function onSent(destName, castGUID, spellID)
   if o then
     -- SUCCEEDED already came first: start now, with the time it actually succeeded
     orphans[castGUID] = nil
-    startDot(info, guid, str(destName), o.t, "(SENT arrived late)")
+    CORE.begin(info, guid, str(destName), o.t, "(SENT arrived late)")
     return
   end
   pending[castGUID] = { info = info, guid = guid, name = str(destName) }
@@ -1031,7 +1151,7 @@ local function onSucceeded(castGUID, spellID)
   local p = pending[castGUID]
   if p then
     pending[castGUID] = nil
-    startDot(p.info, p.guid, p.name, now())
+    CORE.begin(p.info, p.guid, p.name, now())
     return
   end
   local info = spellInfo(spellID)
@@ -1045,7 +1165,7 @@ local function onSucceeded(castGUID, spellID)
     local g = keyOf("target")
     local hostile = plain(UnitCanAttack, "player", "target")
     if g and hostile ~= false and plain(UnitIsDead, "target") ~= true then
-      startDot(info, g, nameOf("target"), o.t, "(no SENT, used target)")
+      CORE.begin(info, g, nameOf("target"), o.t, "(no SENT, used target)")
     else
       dbg("IGNORE " .. info.name .. " SUCCEEDED without SENT and no enemy target")
     end
@@ -1222,7 +1342,7 @@ function TRACK.reset()
   dirty = true
 end
 
-local function onUnitCombat(unit, action, _, _, school)
+local function onUnitCombat(unit, action, flags, _, school)
   action = str(action)
   if not action then return end
   if action == "WOUND" then
@@ -1230,6 +1350,7 @@ local function onUnitCombat(unit, action, _, _, school)
     local m = g and mobs[g]
     school = num(school)
     if school == 4 and next(armed) then trapHit("fire", unit) end
+    if g and school == 32 and CORE.bolts[g] then CORE.vulnHit(g, str(flags)) end -- 0.24
     if m and school then
       m.lastTick = m.lastTick or {}
       m.lastTick[school] = now()
@@ -1324,17 +1445,20 @@ local function syncOutOfCombat()
     if m and not seen[g] then
       seen[g] = true
       local present, readable = {}, true
+      local byName = {} -- 0.24: a timer started by another cast (brand, vulnerability) has the cast's ID
       for i = 1, 40 do
         local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, u, i, "HARMFUL|PLAYER")
         if not ok or issecret(a) then readable = false break end
         if not a then break end
         local id = num(a.spellId)
         if id then present[id] = num(a.expirationTime) or true end
+        local an = str(a.name)
+        if an and id then byName[an] = present[id] end
       end
       if readable then
         local t = now()
         for id, d in pairs(m.dots) do
-          local p = present[id]
+          local p = present[id] or (d.info.def.cast and byName[LOOK.spell(d.info)])
           if p then
             if type(p) == "number" and p > 0 and math.abs(p - d.expires) > 0.3 then
               d.expires = p
@@ -1354,6 +1478,7 @@ end
 
 local function scan()
   TRACK.prune(now())
+  CORE.boltPrune(now()) -- 0.24
   if next(mobs) == nil then return end
   for _, m in pairs(mobs) do m.unit, m.tickUnit = nil, nil end
   for _, u in ipairs(TOKENS) do
@@ -3513,6 +3638,13 @@ local function testBars()
       or { id = -9, name = bd.name, shown = bd.loc, def = bd, color = bd.color, icon = iconOf(bd.id) }
     mobs["Test-0-0-0-0-1-BBB"].dots[info.id] = { info = info, start = t - 3, expires = t + 7, confirmed = true, charges = 4 }
   end
+  -- 0.24: Shadow Vulnerability while it is tracked
+  local vd = DEF_BY_NAME["Shadow Vulnerability"]
+  if vd and TRACK.on(vd) and CORE.vulnState ~= "no" then
+    local info = (type(known[vd.name]) == "number" and spellInfo(known[vd.name]))
+      or { id = -10, name = vd.name, shown = vd.loc, def = vd, group = vd.group, color = vd.color, icon = iconOf(vd.id) }
+    mobs["Test-0-0-0-0-1-AAA"].dots[info.id] = { info = info, start = t - 4, expires = t + 8, confirmed = true }
+  end
   say(L["Test timers shown. They run out on their own or end when you leave combat."])
 end
 
@@ -3744,6 +3876,12 @@ local function buildSample()
   for _, d in pairs(list[2].dots) do d.dim = true end
   if known["Siphon Life"] and DEF_BY_NAME["Siphon Life"] then
     local id, d = dot("Siphon Life", 22, 30)
+    list[1].dots[id] = d
+  end
+  -- 0.24: Shadow Vulnerability while it is tracked
+  local vd = DEF_BY_NAME["Shadow Vulnerability"]
+  if vd and TRACK.on(vd) and CORE.vulnState ~= "no" then
+    local id, d = dot("Shadow Vulnerability", 7, 12)
     list[1].dots[id] = d
   end
   return list, "preview-A"
@@ -4134,8 +4272,10 @@ function LOOK.buildSpellsPage(g)
   local checks = {}
   for _, sp in ipairs(SPELLS) do
     if isMine(sp) then
-      local cb = makeCheck(g, LOOK.spell(sp),
-        TRACK.default(sp) and "Tracked by default. Untick to stop tracking it." or "Off by default. Tick to track it.",
+      -- 0.24: Shadow Vulnerability is a guess: "(experimental)" and its own tooltip
+      local cb = makeCheck(g, LOOK.spell(sp) .. (sp.vuln and (" " .. L["(experimental)"]) or ""),
+        sp.vuln and "Experimental, off by default. Improved Shadow Bolt talent: a Shadow Bolt crit makes the enemy take more Shadow damage from you for 12 sec. The game doesn't say which bolt crit, so DotWatch guesses it (a critical shadow hit on that enemy right after your bolt) and can be off."
+        or TRACK.default(sp) and "Tracked by default. Untick to stop tracking it." or "Off by default. Tick to track it.",
         function() return TRACK.on(sp) end, function(v) TRACK.set(sp, v) end)
       cb.icon = cb:CreateTexture(nil, "ARTWORK")
       cb.icon:SetSize(16, 16)

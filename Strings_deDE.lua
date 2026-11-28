@@ -273,6 +273,8 @@ ns.STRINGS.deDE = {
   ["Ticked spells are tracked. Untick a spell to stop tracking it: no timer, no gray placeholder, no red blink. Gray names: not learned yet."] = "Angehakte Zauber werden verfolgt. Haken weg = kein Timer, kein grauer Platzhalter, kein rotes Blinken. Graue Namen: noch nicht gelernt.",
   ["Tracked by default. Untick to stop tracking it."] = "Standardmäßig verfolgt. Haken entfernen, um ihn nicht mehr zu verfolgen.",
   ["Off by default. Tick to track it."] = "Standardmäßig aus. Haken setzen, um ihn zu verfolgen.",
+  ["(experimental)"] = "(experimentell)",
+  ["Experimental, off by default. Improved Shadow Bolt talent: a Shadow Bolt crit makes the enemy take more Shadow damage from you for 12 sec. The game doesn't say which bolt crit, so DotWatch guesses it (a critical shadow hit on that enemy right after your bolt) and can be off."] = "Experimentell, standardmäßig aus. Talent Verbesserter Schattenblitz: Ein kritischer Schattenblitz lässt den Gegner 12 Sek. lang mehr Schattenschaden von dir erleiden. Das Spiel verrät nicht, welcher Blitz kritisch war, deshalb schätzt DotWatch das (ein kritischer Schattentreffer auf diesem Gegner kurz nach deinem Blitz) und kann danebenliegen.",
   ["Default list"] = "Standardliste",
   ["Devouring Plague jumps (experimental)"] = "Sprünge der Verschlingenden Seuche (experimentell)",
   ["Follow Devouring Plague jumps"] = "Sprünge der Verschlingenden Seuche verfolgen",

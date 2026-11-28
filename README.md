@@ -7,7 +7,7 @@ DoT and crowd-control timers per enemy for **World of Warcraft: Forever**, for e
 | | Version | Where |
 |---|---|---|
 | **Current release** | **v0.23** | [CurseForge: Dot and CC Watch](https://www.curseforge.com/wow/addons/dot-and-cc-watch), tag `v0.23` |
-| **Experimental** (off by default) | since v0.20.3 | Priest: follow Devouring Plague jumps, see [Experimental features](#experimental-features-off-by-default) |
+| **Experimental** (off by default) | since v0.20.3 | Priest: follow Devouring Plague jumps; Warlock: Shadow Vulnerability (0.24), see [Experimental features](#experimental-features-off-by-default) |
 
 Forever hides the combat log and doesn't let addons read enemy debuffs during combat. DotWatch works around that: it builds its timers from your own casts, and it detects resists and immunes from the events the game still sends.
 
@@ -56,6 +56,7 @@ Forever hides the combat log and doesn't let addons read enemy debuffs during co
 New features that rely on a guess ship switched off and marked "experimental", so testers can try them in a normal release while nothing changes for everyone else. Turn them on in the options; feedback decides whether they become a normal feature.
 
 - **Follow Devouring Plague jumps** (Priest, talent Devouring Contagion), Options › Tracked spells › "Devouring Plague jumps (experimental)": when an enemy dies with your Devouring Plague, up to two nearby enemies get an estimated plague (flash "jumped") with the time that was left on the dead enemy. The next shadow tick confirms it; without a tick within 6 s in view it is dropped. The page also shows whether DotWatch found the talent.
+- **Shadow Vulnerability** (Warlock, talent Improved Shadow Bolt, 0.24), Options › Tracked spells › "Shadow Vulnerability (experimental)": on Forever a Shadow Bolt crit makes the enemy take more Shadow damage from you for 12 s. DotWatch shows a 12 s timer on that enemy when a critical shadow hit lands on it shortly after your Shadow Bolt (not counting your DoT ticks). A pet's or another warlock's shadow crit at that moment can be mistaken for it.
 
 ## Languages
 
@@ -112,6 +113,7 @@ Then start the game or type `/reload`.
 - **Out of combat** the real debuffs are readable, so DotWatch corrects its timers and learns the exact DoT durations (not crowd control: diminishing returns would shorten them).
 - **Health**: Forever keeps enemy health secret from addons, so DotWatch never compares it in Lua. Health goes straight into game-drawn bars. (The kill skull of 0.15–0.20, which let the game compare health with the damage your DoTs still deal, was removed in 0.21.)
 - **Devouring Plague jumps** (experimental): the game doesn't say where a plague jumps. DotWatch takes the enemies whose auras changed right around the death as candidates and waits for a shadow tick on them to confirm.
+- **Shadow Vulnerability** (experimental): the cast doesn't say whether a Shadow Bolt crit. The game does report a critical hit on an enemy in combat, so the first shadow hit on the bolt's enemy within 3 s that isn't one of your DoT ticks counts as the bolt; a crit starts (or restarts) the 12 s timer.
 - **Languages**: every spell has its spell ID; the game names it in its own language, and that name is matched against casts, the spellbook and auras. Saved settings (colors, statistics, immunities, tracked spells) stay keyed by the English name, so they survive a language change.
 - **Range**: `C_Spell.IsSpellInRange(spell, unit)` stays readable in combat, also for nameplates, every 0.2 s per row. It ignores line of sight; that only shows up as a failed cast together with the game's "Target not in line of sight" error.
 - **Banished enemies** are immune to everything; an "Immune" there is not stored as an immunity of that enemy type.
